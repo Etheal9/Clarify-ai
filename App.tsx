@@ -9,7 +9,7 @@ import { TestSection } from './components/TestSection';
 import { TeachSection } from './components/TeachSection';
 import { PasteLinkSection } from './components/PasteLinkSection';
 import { MetricsSection } from './components/MetricsSection';
-import { AppTab, MainView, ChatSession, ChatMessage, GroundingSource, SourceItem } from './types';
+import { AppTab, MainView, ChatSession, ChatMessage, GroundingSource, SourceItem, MistakeItem, QuizResult } from './types';
 import { generateExplanation, generateVisual, verifyText, generateSimulation, editVisual, editSimulation } from './services/geminiService';
 
 const App: React.FC = () => {
@@ -33,9 +33,13 @@ const App: React.FC = () => {
   // Context & Sources
   const [lastContext, setLastContext] = useState<string>('');
   const [sources, setSources] = useState<SourceItem[]>([
-      { id: '1', type: 'youtube', title: 'Introduction to Thermodynamics', metadata: 'youtube.com • 15 mins • Uploaded 2h ago', isSelected: true },
-      { id: '2', type: 'pdf', title: 'Chapter 4: Entropy & Heat.pdf', metadata: 'Local File • 2.4 MB', isSelected: true },
+      { id: '1', type: 'youtube', title: 'Introduction to Thermodynamics', metadata: 'youtube.com • 15 mins • Uploaded 2h ago', isSelected: true, content: 'Video Transcript Placeholder' },
+      { id: '2', type: 'pdf', title: 'Chapter 4: Entropy & Heat.pdf', metadata: 'Local File • 2.4 MB', isSelected: true, content: 'PDF Text Placeholder' },
   ]);
+
+  // Mistakes & Quiz History
+  const [mistakes, setMistakes] = useState<MistakeItem[]>([]);
+  const [quizHistory, setQuizHistory] = useState<QuizResult[]>([]);
 
   // --- INITIALIZATION ---
   useEffect(() => {
@@ -47,22 +51,20 @@ const App: React.FC = () => {
     };
     setSessions([initialSession]);
     setCurrentSessionId(initialSession.id);
-    setLastContext("Thermodynamics basic laws and entropy"); // Default context for demo
+    setLastContext("Thermodynamics basic laws and entropy"); 
     
-    // Check system preference for dark mode
     if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
         setIsDarkMode(true);
     }
   }, []);
 
-  // Responsive Sidebar
   useEffect(() => {
     const handleResize = () => {
         if (window.innerWidth < 1024) setIsSidebarOpen(false);
         else setIsSidebarOpen(true);
     };
     window.addEventListener('resize', handleResize);
-    handleResize(); // Initial check
+    handleResize(); 
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
@@ -98,42 +100,45 @@ const App: React.FC = () => {
     const session = getCurrentSession();
     if (!session) return;
 
-    setLastContext(text); // Update context for future quizzes
+    setLastContext(text); 
 
-    // 1. User Message
     const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', text, timestamp: Date.now() };
     let updatedMessages = [...session.messages, userMsg];
     updateCurrentSessionMessages(updatedMessages);
 
-    // Update Title if first message
     if (session.messages.length === 0) {
         setSessions(prev => prev.map(s => s.id === currentSessionId ? { ...s, title: text.slice(0, 30) } : s));
     }
 
-    // 2. Logic to dispatch to AI
     setIsProcessing(true);
     try {
-        // If in "Visuals" tab and have image -> Edit Image
+        // --- CONTEXT PREPARATION ---
+        // Combine user text with selected sources
+        const activeSources = sources.filter(s => s.isSelected);
+        let fullContext = text;
+        if (activeSources.length > 0) {
+             const sourceText = activeSources.map(s => `[Source: ${s.title}]\n${s.content || s.url}`).join('\n\n');
+             fullContext = `Reference Material:\n${sourceText}\n\nUser Query/Topic:\n${text}`;
+        }
+        // ---------------------------
+
         if (activeView === 'learning' && activeSubTab === AppTab.VISUALS && visualBase64) {
             const newImage = await editVisual(visualBase64, text);
             setVisualBase64(newImage);
         }
-        // If in "Simulation" tab and have code -> Edit Sim
         else if (activeView === 'learning' && activeSubTab === AppTab.SIMULATION && simulationCode) {
             const newCode = await editSimulation(simulationCode, text);
             setSimulationCode(newCode);
         }
-        // Else -> Generate All (Default Flow)
         else {
-            setActiveView('learning'); // Force view to learning
-            setActiveSubTab(AppTab.EXPLANATION); // Start with explanation
+            setActiveView('learning');
+            setActiveSubTab(AppTab.EXPLANATION);
             
-            // Parallel generation
             const [exp, vis, sim, ver] = await Promise.allSettled([
-                generateExplanation(text),
-                generateVisual(text),
-                generateSimulation(text),
-                verifyText(text)
+                generateExplanation(fullContext),
+                generateVisual(fullContext),
+                generateSimulation(fullContext),
+                verifyText(fullContext)
             ]);
 
             if (exp.status === 'fulfilled') setExplanation(exp.value);
@@ -148,7 +153,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Source Handlers
   const handleAddSource = (item: SourceItem) => {
       setSources(prev => [item, ...prev]);
   };
@@ -162,8 +166,22 @@ const App: React.FC = () => {
       setSources(prev => prev.filter(s => !s.isSelected));
   };
 
+  const handleAddMistake = (mistake: MistakeItem) => {
+      setMistakes(prev => [mistake, ...prev]);
+  };
+  const handleUpdateMistake = (id: string, note: string) => {
+      setMistakes(prev => prev.map(m => m.id === id ? { ...m, note } : m));
+  };
+  const handleDeleteMistake = (id: string) => {
+      setMistakes(prev => prev.filter(m => m.id !== id));
+  };
+  
+  const handleQuizComplete = (result: QuizResult) => {
+      setQuizHistory(prev => [result, ...prev]);
+      setActiveView('metrics'); // Redirect to metrics to see updated data
+  };
 
-  // --- RENDER HELPERS ---
+
   const renderSubNav = () => (
     <div className="bg-white dark:bg-black border-b border-gray-100 dark:border-gray-800 px-4 sm:px-8 py-0 flex items-center justify-center gap-4 sm:gap-8 shadow-[inset_0_-1px_0_#f3f4f6] dark:shadow-[inset_0_-1px_0_#262626] transition-all overflow-x-auto">
         {[
@@ -191,8 +209,6 @@ const App: React.FC = () => {
 
   return (
     <div className={`${isDarkMode ? 'dark' : ''} h-screen flex text-gray-800 dark:text-gray-100 overflow-hidden font-sans`}>
-        
-        {/* SIDEBAR */}
         <Sidebar 
             isOpen={isSidebarOpen}
             activeView={activeView}
@@ -204,17 +220,13 @@ const App: React.FC = () => {
             toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
         />
 
-        {/* MAIN CONTENT */}
         <main className="flex-1 flex flex-col relative bg-white dark:bg-black transition-colors duration-200 min-w-0">
-            
-            {/* HEADER */}
             <header className="h-16 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between px-4 sm:px-8 bg-white dark:bg-black z-10 shrink-0">
                 <div className="font-bold text-xl tracking-tight flex items-center gap-2 text-gray-900 dark:text-white">
                     <div className="w-6 h-6 bg-black dark:bg-white rounded-md"></div>
                     <span>Clarify AI</span>
                 </div>
 
-                {/* Main Tabs */}
                 <div className="flex space-x-1 bg-gray-100 dark:bg-gray-900 p-1 rounded-lg overflow-x-auto max-w-[200px] sm:max-w-none">
                     {[
                         { id: 'learning', icon: 'ph-book-open-text', label: 'Learning' },
@@ -237,7 +249,6 @@ const App: React.FC = () => {
                     ))}
                 </div>
 
-                {/* Dark Mode Toggle */}
                 <button 
                     onClick={() => setIsDarkMode(!isDarkMode)}
                     className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-500 dark:text-gray-400"
@@ -246,17 +257,12 @@ const App: React.FC = () => {
                 </button>
             </header>
 
-            {/* SUB-NAV (Only for Learning) */}
             {activeView === 'learning' && renderSubNav()}
 
-            {/* VIEW CONTENT CONTAINER */}
             <div className="flex-1 overflow-y-auto relative pb-32 scroll-smooth bg-gray-50/50 dark:bg-[#0a0a0a]">
                 
-                {/* 1. LEARNING VIEW */}
                 {activeView === 'learning' && (
                     <div className="h-full flex flex-col max-w-5xl mx-auto w-full pt-6 px-4 sm:px-8">
-                        
-                        {/* Gemini Insight Banner */}
                         {!explanation && !isProcessing && (
                             <div className="w-full mb-8 animate-fade-in">
                                 <div className="bg-gradient-to-r from-violet-50 to-indigo-50 dark:from-violet-900/10 dark:to-indigo-900/10 border border-indigo-100 dark:border-indigo-900 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between shadow-sm relative overflow-hidden">
@@ -272,7 +278,6 @@ const App: React.FC = () => {
                             </div>
                         )}
 
-                        {/* Content Area */}
                         <div className="flex-1 bg-white dark:bg-black rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden min-h-[400px]">
                             {activeSubTab === AppTab.EXPLANATION && <ExplanationSection explanation={explanation} isLoading={isProcessing && !explanation} />}
                             {activeSubTab === AppTab.VISUALS && (
@@ -301,17 +306,21 @@ const App: React.FC = () => {
                     </div>
                 )}
 
-                {/* 2. TEST VIEW (Active Assessment) */}
                 {activeView === 'test' && (
-                   <TestSection contextText={lastContext} />
+                   <TestSection 
+                        contextText={lastContext} 
+                        mistakes={mistakes}
+                        onAddMistake={handleAddMistake}
+                        onUpdateMistake={handleUpdateMistake}
+                        onDeleteMistake={handleDeleteMistake}
+                        onQuizComplete={handleQuizComplete}
+                   />
                 )}
 
-                {/* 3. TEACH VIEW (Feynman Mode) */}
                 {activeView === 'teach' && (
                     <TeachSection initialTopic={lastContext.slice(0, 50)} />
                 )}
 
-                {/* 4. PASTE LINK VIEW (Manage Sources) */}
                 {activeView === 'paste-link' && (
                     <PasteLinkSection 
                         sources={sources}
@@ -322,21 +331,14 @@ const App: React.FC = () => {
                     />
                 )}
                 
-                {/* 5. METRICS VIEW */}
                 {activeView === 'metrics' && (
-                     <MetricsSection />
-                )}
-
-                {/* 6. OTHER VIEWS (Placeholders) */}
-                {(activeView !== 'learning' && activeView !== 'test' && activeView !== 'teach' && activeView !== 'paste-link' && activeView !== 'metrics') && (
-                     <div className="flex flex-col items-center justify-center pt-20 px-4">
-                        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-4 capitalize">{activeView.replace('-', ' ')}</h1>
-                        <p className="text-gray-500 dark:text-gray-400">This view is currently under construction.</p>
-                     </div>
+                     <MetricsSection 
+                        mistakes={mistakes}
+                        quizHistory={quizHistory}
+                     />
                 )}
             </div>
             
-            {/* FLOATING INPUT SECTION (Hidden in Teach Mode and Paste Link View) */}
             {(activeView !== 'teach' && activeView !== 'paste-link') && (
                 <InputSection 
                     onSendMessage={handleSendMessage}

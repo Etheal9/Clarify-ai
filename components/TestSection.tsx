@@ -1,15 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { QuizData, QuestionType, MatchPair } from '../types';
+import { QuizData, QuestionType, MistakeItem, QuizResult } from '../types';
 import { generateQuiz } from '../services/geminiService';
 import { Button } from './Button';
-import { CheckCircle, AlertCircle, RefreshCcw, Sparkles } from 'lucide-react';
+import { CheckCircle, AlertCircle, RefreshCcw, Sparkles, BookOpen } from 'lucide-react';
+import { AdaptiveQuizSetup } from './AdaptiveQuizSetup';
+import { MistakeNotebook } from './MistakeNotebook';
 
 interface TestSectionProps {
   contextText: string;
+  mistakes: MistakeItem[];
+  onAddMistake: (mistake: MistakeItem) => void;
+  onUpdateMistake: (id: string, note: string) => void;
+  onDeleteMistake: (id: string) => void;
+  onQuizComplete: (result: QuizResult) => void;
 }
 
-export const TestSection: React.FC<TestSectionProps> = ({ contextText }) => {
+type ViewState = 'setup' | 'quiz' | 'mistake_review';
+
+export const TestSection: React.FC<TestSectionProps> = ({ 
+  contextText, 
+  mistakes, 
+  onAddMistake,
+  onUpdateMistake,
+  onDeleteMistake,
+  onQuizComplete
+}) => {
+  const [viewState, setViewState] = useState<ViewState>('setup');
+  
   const [quizData, setQuizData] = useState<QuizData | null>(null);
+  const [quizConfig, setQuizConfig] = useState<{difficulty: string}>({difficulty: 'Medium'});
   const [isLoading, setIsLoading] = useState(false);
   const [activeType, setActiveType] = useState<QuestionType>('choose');
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -17,23 +36,38 @@ export const TestSection: React.FC<TestSectionProps> = ({ contextText }) => {
   // State for user answers
   const [selectedOption, setSelectedOption] = useState<string>('');
   const [textInput, setTextInput] = useState<string>('');
-  const [matchSelections, setMatchSelections] = useState<Record<string, string>>({}); // { leftItem: rightItem }
+  const [matchSelections, setMatchSelections] = useState<Record<string, string>>({}); 
   const [showResult, setShowResult] = useState(false);
 
-  // Initial Data Fetch
+  // Score tracking for current session
+  const [correctCount, setCorrectCount] = useState(0);
+
+  // Mistake Capture State
+  const [mistakeCategory, setMistakeCategory] = useState('Concept Error');
+  const [mistakeNote, setMistakeNote] = useState('');
+  const [showMistakeForm, setShowMistakeForm] = useState(false);
+
   useEffect(() => {
-    if (contextText && !quizData && !isLoading) {
-      handleGenerateQuiz();
-    }
+    // Reset if context significantly changes? (optional)
   }, [contextText]);
 
-  const handleGenerateQuiz = async () => {
+  // --- Handlers ---
+
+  const handleStartQuiz = async (config: { topics: string[], difficulty: string, count: number }) => {
     setIsLoading(true);
+    setQuizConfig({ difficulty: config.difficulty });
     try {
-      const data = await generateQuiz(contextText || "General knowledge");
+      // Create a focused prompt based on config
+      const focusText = config.topics.length > 0 
+        ? `Focus topics: ${config.topics.join(', ')}. \nContext: ${contextText}` 
+        : contextText;
+        
+      const data = await generateQuiz(focusText || "General Knowledge", config.difficulty, config.count);
       setQuizData(data);
       setCurrentQuestionIndex(0);
+      setCorrectCount(0);
       resetInteraction();
+      setViewState('quiz');
     } catch (e) {
       console.error(e);
     } finally {
@@ -46,6 +80,9 @@ export const TestSection: React.FC<TestSectionProps> = ({ contextText }) => {
     setTextInput('');
     setMatchSelections({});
     setShowResult(false);
+    setShowMistakeForm(false);
+    setMistakeNote('');
+    setMistakeCategory('Concept Error');
   };
 
   const handleTypeChange = (type: QuestionType) => {
@@ -54,10 +91,33 @@ export const TestSection: React.FC<TestSectionProps> = ({ contextText }) => {
     resetInteraction();
   };
 
+  const finishQuiz = () => {
+    if (quizData) {
+        // Calculate final result
+        const result: QuizResult = {
+            id: Date.now().toString(),
+            topic: quizData.topic,
+            difficulty: quizConfig.difficulty,
+            score: correctCount,
+            totalQuestions: 5, // Currently hardcoded to 5 per type section in UI flow, need to adapt if we change navigation
+            timestamp: Date.now()
+        };
+        onQuizComplete(result);
+    }
+    setViewState('setup');
+  };
+
   const handleNext = () => {
-    if (currentQuestionIndex < 4) {
+    if (showMistakeForm) {
+        handleSaveMistake();
+    }
+    
+    if (currentQuestionIndex < 4) { 
       setCurrentQuestionIndex(prev => prev + 1);
       resetInteraction();
+    } else {
+      // End of section
+      finishQuiz();
     }
   };
 
@@ -68,7 +128,107 @@ export const TestSection: React.FC<TestSectionProps> = ({ contextText }) => {
     }
   };
 
+  const handleCheckAnswer = () => {
+      setShowResult(true);
+      
+      let isCorrect = false;
+      if (activeType === 'choose') {
+          const q = quizData?.choose[currentQuestionIndex];
+          if (q) isCorrect = selectedOption === q.correctAnswer;
+      } else if (activeType === 'fill-blank') {
+          const q = quizData?.fillBlank[currentQuestionIndex];
+          if (q) isCorrect = textInput.toLowerCase().trim() === q.correctAnswer.toLowerCase().trim();
+      } else if (activeType === 'match') {
+          const q = quizData?.match[currentQuestionIndex];
+          if (q) {
+             isCorrect = q.pairs.every(p => matchSelections[p.left] === p.right);
+          }
+      } else if (activeType === 'answer') {
+          isCorrect = true; // Auto-pass short answer for now
+      }
+
+      if (isCorrect) {
+          setCorrectCount(prev => prev + 1);
+      } else {
+          setShowMistakeForm(true);
+      }
+  };
+
+  const handleSaveMistake = () => {
+      if (!quizData) return;
+      
+      let qText = "";
+      let cAnswer = "";
+      let uAnswer = "";
+
+      if (activeType === 'choose') {
+          const q = quizData.choose[currentQuestionIndex];
+          qText = q.question;
+          cAnswer = q.correctAnswer;
+          uAnswer = selectedOption;
+      } else if (activeType === 'fill-blank') {
+          const q = quizData.fillBlank[currentQuestionIndex];
+          qText = q.question;
+          cAnswer = q.correctAnswer;
+          uAnswer = textInput;
+      }
+
+      onAddMistake({
+          id: Date.now().toString(),
+          questionId: currentQuestionIndex.toString(),
+          questionText: qText || "Question",
+          userAnswer: uAnswer || "No Answer",
+          correctAnswer: cAnswer || "Answer",
+          category: mistakeCategory,
+          note: mistakeNote || "No note provided",
+          topic: quizData.topic,
+          timestamp: Date.now()
+      });
+      
+      setShowMistakeForm(false);
+  };
+
   // --- RENDERERS ---
+
+  if (viewState === 'setup') {
+      return (
+          <div className="h-full relative">
+              {mistakes.length > 0 && (
+                  <div className="absolute top-4 right-4 z-10">
+                      <Button variant="secondary" onClick={() => setViewState('mistake_review')} icon={<BookOpen className="w-4 h-4"/>}>
+                          Mistake Notebook
+                      </Button>
+                  </div>
+              )}
+              {isLoading ? (
+                  <div className="flex flex-col items-center justify-center h-full animate-pulse">
+                        <div className="w-16 h-16 bg-gray-200 dark:bg-gray-800 rounded-full mb-4"></div>
+                        <h2 className="text-xl font-bold text-gray-400">Generating Assessment...</h2>
+                        <p className="text-gray-400 mt-2">Crafting questions based on your config.</p>
+                  </div>
+              ) : (
+                  <AdaptiveQuizSetup 
+                    topics={['Thermodynamics', 'Entropy', 'Heat Transfer']} 
+                    initialTopic={quizData?.topic || ""}
+                    onStart={handleStartQuiz}
+                  />
+              )}
+          </div>
+      );
+  }
+
+  if (viewState === 'mistake_review') {
+      return (
+          <MistakeNotebook 
+            mistakes={mistakes} 
+            onBack={() => setViewState('setup')} 
+            onUpdateNote={onUpdateMistake}
+            onDeleteMistake={onDeleteMistake}
+          />
+      );
+  }
+
+  // QUIZ VIEW LOGIC
 
   const renderChoose = () => {
     if (!quizData) return null;
@@ -85,6 +245,7 @@ export const TestSection: React.FC<TestSectionProps> = ({ contextText }) => {
             <button
               key={idx}
               onClick={() => { if(!showResult) setSelectedOption(opt); }}
+              disabled={showResult}
               className={`w-full text-left p-4 rounded-xl border-2 transition-all flex items-center justify-between
                 ${selectedOption === opt 
                   ? 'border-black dark:border-white bg-gray-50 dark:bg-gray-800' 
@@ -111,7 +272,6 @@ export const TestSection: React.FC<TestSectionProps> = ({ contextText }) => {
     const q = quizData.fillBlank[currentQuestionIndex];
     if (!q) return null;
 
-    // Split sentence by "___"
     const parts = q.sentence.split('___');
 
     return (
@@ -147,15 +307,8 @@ export const TestSection: React.FC<TestSectionProps> = ({ contextText }) => {
 
   const renderMatch = () => {
     if (!quizData) return null;
-    const q = quizData.match[currentQuestionIndex]; // Note: "Match" usually implies a set, but let's treat one "question" as one set of pairs for simplicity
+    const q = quizData.match[currentQuestionIndex];
     if (!q) return null;
-
-    // We need to render Left column and Right column
-    // For simplicity, let's just show standard html select for right side
-    
-    // In a real app we'd randomize right side. For this demo, let's just assume pairs come in order and we randomize display
-    // But to keep code simple and reliable without complex state management for randomization on every render,
-    // we will map over the pairs directly but ask user to select from a dropdown.
 
     const rightOptions = q.pairs.map(p => p.right).sort(); 
 
@@ -222,29 +375,7 @@ export const TestSection: React.FC<TestSectionProps> = ({ contextText }) => {
      );
   };
 
-  // --- MAIN UI ---
-
-  if (isLoading) {
-    return (
-        <div className="flex flex-col items-center justify-center h-full animate-pulse">
-            <div className="w-16 h-16 bg-gray-200 dark:bg-gray-800 rounded-full mb-4"></div>
-            <h2 className="text-xl font-bold text-gray-400">Generating Assessment...</h2>
-            <p className="text-gray-400 mt-2">Crafting questions from your learning session.</p>
-        </div>
-    );
-  }
-
-  if (!quizData) {
-      return (
-          <div className="flex flex-col items-center justify-center h-full">
-              <div className="p-6 bg-gray-100 dark:bg-gray-800 rounded-2xl mb-6 text-center max-w-md">
-                 <h2 className="text-xl font-bold mb-2">Ready to Test?</h2>
-                 <p className="text-gray-500 mb-6">Generate a quiz based on the content you've been learning.</p>
-                 <Button onClick={handleGenerateQuiz}>Generate Quiz</Button>
-              </div>
-          </div>
-      );
-  }
+  if (!quizData) return null; 
 
   return (
     <div className="flex flex-col items-center pt-8 px-4 w-full h-full animate-fade-in">
@@ -257,22 +388,20 @@ export const TestSection: React.FC<TestSectionProps> = ({ contextText }) => {
                     <p className="text-gray-500 dark:text-gray-400 mt-1">Topic: <span className="font-semibold text-indigo-600 dark:text-indigo-400">{quizData.topic}</span></p>
                 </div>
                 <div className="flex gap-2">
-                    <Button variant="secondary" onClick={handleGenerateQuiz} icon={<RefreshCcw className="w-4 h-4"/>}>
-                        New Quiz
+                     <div className="px-3 py-1 bg-gray-100 dark:bg-gray-800 rounded-lg text-sm font-mono">
+                        Score: {correctCount}/{currentQuestionIndex}
+                     </div>
+                     <Button variant="secondary" onClick={() => setViewState('setup')} icon={<RefreshCcw className="w-4 h-4"/>}>
+                        End Quiz
                     </Button>
                 </div>
             </div>
             
             {/* Main Card Layout */}
-            <div className="flex-1 flex gap-6 min-h-0 mb-20"> {/* mb-20 for bottom input bar clearance */}
+            <div className="flex-1 flex gap-6 min-h-0 mb-20"> 
                 
                 {/* Left: Question Area */}
                 <div className="flex-1 bg-white dark:bg-black border-2 border-gray-200 dark:border-gray-800 rounded-2xl shadow-sm flex flex-col relative overflow-hidden">
-                    {/* Background Grid Pattern */}
-                    <div className="absolute inset-0 pointer-events-none opacity-[0.03] dark:opacity-[0.1]" 
-                         style={{backgroundImage: 'linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)', backgroundSize: '40px 40px'}}>
-                    </div>
-
                     <div className="flex-1 p-8 overflow-y-auto relative z-10 custom-scrollbar">
                         <div className="flex justify-between items-start mb-8">
                             <div>
@@ -282,22 +411,50 @@ export const TestSection: React.FC<TestSectionProps> = ({ contextText }) => {
                                 </h2>
                                 <div className="h-1 w-12 bg-black dark:bg-white mt-2"></div>
                             </div>
-                            
-                            {/* Difficulty Badges (Visual Only) */}
-                            <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-lg border border-gray-200 dark:border-gray-700">
-                                <button className="px-3 py-1 text-xs font-bold rounded-md text-gray-500">Easy</button>
-                                <button className="px-3 py-1 text-xs font-bold rounded-md bg-white dark:bg-gray-700 text-orange-600 shadow-sm">Medium</button>
-                                <button className="px-3 py-1 text-xs font-bold rounded-md text-gray-500">Hard</button>
-                            </div>
                         </div>
 
-                        {/* Question Content Render */}
                         <div className="animate-fade-in">
                             {activeType === 'choose' && renderChoose()}
                             {activeType === 'fill-blank' && renderFillBlank()}
                             {activeType === 'match' && renderMatch()}
                             {activeType === 'answer' && renderAnswer()}
                         </div>
+
+                        {showMistakeForm && (
+                             <div className="mt-8 p-6 bg-red-50 dark:bg-red-900/10 border-2 border-red-100 dark:border-red-900/30 rounded-xl animate-fade-in">
+                                 <h4 className="text-red-800 dark:text-red-300 font-bold mb-4 flex items-center gap-2">
+                                     <AlertCircle className="w-5 h-5" /> Incorrect Answer. Analyze your mistake:
+                                 </h4>
+                                 <div className="grid sm:grid-cols-2 gap-4 mb-4">
+                                     <div>
+                                         <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Category</label>
+                                         <select 
+                                            value={mistakeCategory}
+                                            onChange={(e) => setMistakeCategory(e.target.value)}
+                                            className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg outline-none"
+                                         >
+                                             <option>Concept Error</option>
+                                             <option>Calculation</option>
+                                             <option>Misread Question</option>
+                                             <option>Guessing</option>
+                                         </select>
+                                     </div>
+                                 </div>
+                                 <div>
+                                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Why did you miss this?</label>
+                                      <textarea 
+                                        value={mistakeNote}
+                                        onChange={(e) => setMistakeNote(e.target.value)}
+                                        className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg outline-none"
+                                        rows={2}
+                                        placeholder="I thought that..."
+                                      />
+                                 </div>
+                                 <div className="flex justify-end mt-4">
+                                     <Button onClick={handleSaveMistake} className="text-xs">Save Analysis & Continue</Button>
+                                 </div>
+                             </div>
+                        )}
 
                     </div>
 
@@ -306,31 +463,33 @@ export const TestSection: React.FC<TestSectionProps> = ({ contextText }) => {
                         <div className="flex gap-2">
                              <button 
                                 onClick={handlePrevious} 
-                                disabled={currentQuestionIndex === 0}
+                                disabled={currentQuestionIndex === 0 || showMistakeForm}
                                 className="px-4 py-2 text-sm font-bold text-gray-500 hover:text-black dark:hover:text-white disabled:opacity-30 transition-colors"
                              >
                                 Previous
                              </button>
                              <button 
                                 onClick={handleNext}
-                                disabled={currentQuestionIndex === 4}
+                                disabled={showMistakeForm}
                                 className="px-4 py-2 text-sm font-bold text-gray-500 hover:text-black dark:hover:text-white disabled:opacity-30 transition-colors"
                              >
-                                Next
+                                {currentQuestionIndex === 4 ? "Finish Quiz" : "Next"}
                              </button>
                         </div>
                         
                         {!showResult ? (
                             <button 
-                                onClick={() => setShowResult(true)}
+                                onClick={handleCheckAnswer}
                                 className="bg-black dark:bg-white text-white dark:text-black px-6 py-2 rounded-lg font-bold shadow-lg hover:transform hover:scale-105 transition-all"
                             >
                                 Check Answer
                             </button>
                         ) : (
-                             <div className="flex items-center gap-2 text-green-600 font-bold px-4">
-                                <CheckCircle className="w-5 h-5"/> Checked
-                             </div>
+                             !showMistakeForm && (
+                                <div className="flex items-center gap-2 text-green-600 font-bold px-4">
+                                    <CheckCircle className="w-5 h-5"/> Correct
+                                </div>
+                             )
                         )}
                     </div>
                 </div>
@@ -340,9 +499,7 @@ export const TestSection: React.FC<TestSectionProps> = ({ contextText }) => {
                     <h3 className="font-bold text-gray-700 dark:text-gray-300 mb-6 text-xs uppercase tracking-wider">Question Type</h3>
                     
                     <div className="space-y-2 relative">
-                         {/* Selection Indicator Line (Visual approximation) */}
                          <div className="absolute left-[7px] top-2 bottom-2 w-0.5 bg-gray-200 dark:bg-gray-700 -z-10"></div>
-
                          {[
                              { id: 'choose', label: 'Choose' },
                              { id: 'fill-blank', label: 'Fill the Blank' },

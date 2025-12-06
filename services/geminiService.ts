@@ -232,16 +232,20 @@ export const verifyText = async (text: string): Promise<{ explanation: string; s
 /**
  * Generates a comprehensive quiz with 4 types of questions.
  */
-export const generateQuiz = async (text: string): Promise<QuizData> => {
+export const generateQuiz = async (text: string, difficulty: string = 'Medium', count: number = 5): Promise<QuizData> => {
   if (!text) throw new Error("No context provided for quiz generation");
   const ai = getAI();
+
+  // Distribute questions roughly evenly among types, or simplify for demo
+  const countPerType = Math.max(1, Math.floor(count / 4));
 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: `Generate a structured quiz based on the following text. 
+      contents: `Generate a structured quiz based on the following text.
+      Difficulty Level: ${difficulty}.
       The quiz MUST have 4 sections: 'choose' (Multiple Choice), 'fillBlank' (Fill in the blank), 'match' (Matching pairs), and 'answer' (Short Answer).
-      Each section MUST have exactly 5 questions.
+      Generate approximately ${countPerType} questions per section, totaling roughly ${count} questions.
       
       Text context: ${text.substring(0, 4000)}`,
       config: {

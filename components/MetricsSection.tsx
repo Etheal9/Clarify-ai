@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
-import { Target, AlertTriangle, CheckCircle, Brain, Zap, TrendingUp, RefreshCw, Info } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Target, AlertTriangle, CheckCircle, Brain, RefreshCw } from 'lucide-react';
 import { Button } from './Button';
+import { MistakeItem, QuizResult } from '../types';
 
 interface Metric {
   id: number;
@@ -11,25 +12,76 @@ interface Metric {
   category: 'Core' | 'Advanced' | 'Performance';
 }
 
-const INITIAL_METRICS: Metric[] = [
-  { id: 1, label: 'Direct Recall', score: 3, required: 4, category: 'Core', description: 'Ability to retrieve specific facts without cues.' },
-  { id: 2, label: 'Conceptual Understanding', score: 4, required: 4, category: 'Core', description: 'Grasping the underlying principles and relationships.' },
-  { id: 3, label: 'Procedural Mastery', score: 5, required: 4, category: 'Core', description: 'Executing steps or methods correctly.' },
-  { id: 4, label: 'Application', score: 2, required: 4, category: 'Core', description: 'Using knowledge in new, unfamiliar situations.' },
-  { id: 5, label: 'Creative Thinking', score: 4, required: 3, category: 'Advanced', description: 'Generating novel ideas or divergent solutions.' },
-  { id: 6, label: 'Critical Thinking', score: 3, required: 3, category: 'Advanced', description: 'Evaluating arguments and identifying biases.' },
-  { id: 7, label: 'Synthesis', score: 2, required: 3, category: 'Advanced', description: 'Integrating separate elements into a coherent whole.' },
-  { id: 8, label: 'Time Efficiency', score: 5, required: 3, category: 'Performance', description: 'Speed plus accuracy in execution.' },
-  { id: 9, label: 'Error Correction', score: 3, required: 4, category: 'Core', description: 'Ability to self-identify and fix mistakes.' },
-  { id: 10, label: 'Depth of Explanation', score: 4, required: 3, category: 'Performance', description: 'Richness and detail in articulated answers.' },
-];
+interface MetricsSectionProps {
+  mistakes: MistakeItem[];
+  quizHistory: QuizResult[];
+}
 
-export const MetricsSection: React.FC = () => {
-  // Simulate dynamic data
-  const [metrics, setMetrics] = useState<Metric[]>(INITIAL_METRICS);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+export const MetricsSection: React.FC<MetricsSectionProps> = ({ mistakes, quizHistory }) => {
+  
+  // --- REAL-TIME CALCULATION LOGIC ---
+  const metrics = useMemo<Metric[]>(() => {
+    // Default Scores (start at 3)
+    let recall = 3;
+    let concept = 3;
+    let procedural = 3;
+    let application = 2;
+    let critical = 2;
+    let errorCorrection = 3;
+    let speed = 4; // Assume reasonable speed by default
 
-  // --- LOGIC ---
+    const totalQuizzes = quizHistory.length;
+    
+    if (totalQuizzes > 0) {
+        // Calculate average accuracy
+        const totalCorrect = quizHistory.reduce((acc, q) => acc + q.score, 0);
+        const totalQuestions = quizHistory.reduce((acc, q) => acc + q.totalQuestions, 0);
+        const accuracy = totalQuestions > 0 ? (totalCorrect / totalQuestions) : 0;
+
+        // Base scores on accuracy
+        if (accuracy > 0.9) { recall = 5; procedural = 5; }
+        else if (accuracy > 0.75) { recall = 4; procedural = 4; }
+        else if (accuracy > 0.5) { recall = 3; procedural = 3; }
+        else { recall = 2; procedural = 2; }
+
+        // Adjust based on Difficulty
+        const hardPasses = quizHistory.filter(q => q.difficulty === 'Hard' && (q.score / q.totalQuestions) > 0.6).length;
+        if (hardPasses > 0) {
+            application += 2;
+            critical += 1;
+        }
+        
+        // Adjust based on Recent Trend (Last 3)
+        const recent = quizHistory.slice(0, 3);
+        const recentAccuracy = recent.reduce((acc, q) => acc + q.score, 0) / recent.reduce((acc, q) => acc + q.totalQuestions, 0);
+        if (recentAccuracy > accuracy) speed += 1; // Improving implies efficiency
+    }
+
+    // Adjust based on Mistake Categories
+    const conceptErrors = mistakes.filter(m => m.category === 'Concept Error').length;
+    if (conceptErrors > 2) concept = Math.max(1, concept - 1);
+    if (conceptErrors === 0 && totalQuizzes > 0) concept = Math.min(5, concept + 1);
+
+    const calcErrors = mistakes.filter(m => m.category === 'Calculation').length;
+    if (calcErrors > 2) procedural = Math.max(1, procedural - 1);
+
+    // Error Correction: Do we have note content?
+    const detailedNotes = mistakes.filter(m => m.note.length > 10).length;
+    if (detailedNotes > 2) errorCorrection = Math.min(5, errorCorrection + 1);
+
+    return [
+      { id: 1, label: 'Direct Recall', score: recall, required: 4, category: 'Core', description: 'Ability to retrieve specific facts without cues.' },
+      { id: 2, label: 'Conceptual Understanding', score: concept, required: 4, category: 'Core', description: 'Grasping the underlying principles and relationships.' },
+      { id: 3, label: 'Procedural Mastery', score: procedural, required: 4, category: 'Core', description: 'Executing steps or methods correctly.' },
+      { id: 4, label: 'Application', score: Math.min(5, application), required: 4, category: 'Core', description: 'Using knowledge in new, unfamiliar situations.' },
+      { id: 5, label: 'Creative Thinking', score: 3, required: 3, category: 'Advanced', description: 'Generating novel ideas or divergent solutions.' },
+      { id: 6, label: 'Critical Thinking', score: Math.min(5, critical), required: 3, category: 'Advanced', description: 'Evaluating arguments and identifying biases.' },
+      { id: 7, label: 'Synthesis', score: 2, required: 3, category: 'Advanced', description: 'Integrating separate elements into a coherent whole.' },
+      { id: 8, label: 'Time Efficiency', score: Math.min(5, speed), required: 3, category: 'Performance', description: 'Speed plus accuracy in execution.' },
+      { id: 9, label: 'Error Correction', score: errorCorrection, required: 4, category: 'Core', description: 'Ability to self-identify and fix mistakes.' },
+      { id: 10, label: 'Depth of Explanation', score: 4, required: 3, category: 'Performance', description: 'Richness and detail in articulated answers.' },
+    ];
+  }, [mistakes, quizHistory]);
 
   const blindSpots = useMemo(() => {
     return metrics.filter(m => m.score < m.required);
@@ -38,19 +90,6 @@ export const MetricsSection: React.FC = () => {
   const overallScore = useMemo(() => {
     return (metrics.reduce((acc, curr) => acc + curr.score, 0) / metrics.length).toFixed(1);
   }, [metrics]);
-
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    // Simulate fetching new analysis from AI
-    setTimeout(() => {
-      const newMetrics = metrics.map(m => ({
-        ...m,
-        score: Math.min(5, Math.max(1, m.score + (Math.random() > 0.5 ? 1 : -1)))
-      }));
-      setMetrics(newMetrics);
-      setIsRefreshing(false);
-    }, 1000);
-  };
 
   // --- VISUALIZATION HELPERS ---
 
@@ -66,16 +105,14 @@ export const MetricsSection: React.FC = () => {
     return 'bg-red-500';
   };
 
-  // SVG Radar Chart Logic
   const renderRadarChart = () => {
     const size = 300;
     const center = size / 2;
     const radius = 100;
     const angleSlice = (Math.PI * 2) / metrics.length;
 
-    // Helper to calculate coordinates
     const getCoords = (value: number, index: number, max: number = 5) => {
-      const angle = index * angleSlice - Math.PI / 2; // Start from top
+      const angle = index * angleSlice - Math.PI / 2; 
       const r = (value / max) * radius;
       return {
         x: center + r * Math.cos(angle),
@@ -83,13 +120,11 @@ export const MetricsSection: React.FC = () => {
       };
     };
 
-    // Build path for current scores
     const pathData = metrics.map((m, i) => {
       const { x, y } = getCoords(m.score, i);
       return `${i === 0 ? 'M' : 'L'} ${x},${y}`;
     }).join(' ') + ' Z';
 
-    // Build path for required threshold (dashed line)
     const thresholdPathData = metrics.map((m, i) => {
       const { x, y } = getCoords(m.required, i);
       return `${i === 0 ? 'M' : 'L'} ${x},${y}`;
@@ -97,80 +132,29 @@ export const MetricsSection: React.FC = () => {
 
     return (
       <svg width={size} height={size} className="mx-auto overflow-visible">
-        {/* Grid Circles */}
         {[1, 2, 3, 4, 5].map(level => (
-          <circle 
-            key={level} 
-            cx={center} 
-            cy={center} 
-            r={(level / 5) * radius} 
-            className="fill-none stroke-gray-200 dark:stroke-gray-700" 
-            strokeWidth="1" 
-          />
+          <circle key={level} cx={center} cy={center} r={(level / 5) * radius} className="fill-none stroke-gray-200 dark:stroke-gray-700" strokeWidth="1" />
         ))}
-        
-        {/* Axes */}
         {metrics.map((_, i) => {
           const { x, y } = getCoords(5, i);
-          return (
-            <line 
-              key={i} 
-              x1={center} 
-              y1={center} 
-              x2={x} 
-              y2={y} 
-              className="stroke-gray-200 dark:stroke-gray-700" 
-              strokeWidth="1" 
-            />
-          );
+          return <line key={i} x1={center} y1={center} x2={x} y2={y} className="stroke-gray-200 dark:stroke-gray-700" strokeWidth="1" />;
         })}
-
-        {/* Required Threshold Area */}
-        <path 
-          d={thresholdPathData} 
-          className="fill-none stroke-blue-400 dark:stroke-blue-500 stroke-dasharray-4 opacity-50" 
-          strokeWidth="2" 
-        />
-
-        {/* User Score Area */}
-        <path 
-          d={pathData} 
-          className="fill-indigo-500/20 stroke-indigo-600 dark:stroke-indigo-400" 
-          strokeWidth="3" 
-        />
-
-        {/* Labels */}
+        <path d={thresholdPathData} className="fill-none stroke-blue-400 dark:stroke-blue-500 stroke-dasharray-4 opacity-50" strokeWidth="2" />
+        <path d={pathData} className="fill-indigo-500/20 stroke-indigo-600 dark:stroke-indigo-400" strokeWidth="3" />
         {metrics.map((m, i) => {
-            const { x, y } = getCoords(6, i); // Push label out a bit
-            // Adjust alignment based on position
+            const { x, y } = getCoords(6, i); 
             const anchor = x < center ? 'end' : x > center ? 'start' : 'middle';
             const baseline = y < center ? 'auto' : 'hanging';
-            
             return (
-                <text 
-                    key={i} 
-                    x={x} 
-                    y={y} 
-                    textAnchor={anchor} 
-                    dominantBaseline={baseline}
-                    className="text-[10px] fill-gray-500 dark:fill-gray-400 font-medium uppercase tracking-wider"
-                >
-                    {m.label.split(' ')[0]} {/* Abbreviate for chart space */}
+                <text key={i} x={x} y={y} textAnchor={anchor} dominantBaseline={baseline} className="text-[10px] fill-gray-500 dark:fill-gray-400 font-medium uppercase tracking-wider">
+                    {m.label.split(' ')[0]} 
                 </text>
             );
         })}
-
-        {/* Data Points */}
         {metrics.map((m, i) => {
             const { x, y } = getCoords(m.score, i);
             return (
-                <circle 
-                    key={i} 
-                    cx={x} 
-                    cy={y} 
-                    r="4" 
-                    className={`${m.score < m.required ? 'fill-red-500' : 'fill-indigo-600 dark:fill-indigo-400'} stroke-white dark:stroke-gray-900 stroke-2 hover:r-6 transition-all`}
-                >
+                <circle key={i} cx={x} cy={y} r="4" className={`${m.score < m.required ? 'fill-red-500' : 'fill-indigo-600 dark:fill-indigo-400'} stroke-white dark:stroke-gray-900 stroke-2 hover:r-6 transition-all`}>
                     <title>{m.label}: {m.score}/5</title>
                 </circle>
             );
@@ -178,8 +162,6 @@ export const MetricsSection: React.FC = () => {
       </svg>
     );
   };
-
-  // --- RENDER ---
 
   return (
     <div className="flex flex-col h-full bg-gray-50/50 dark:bg-black/50 overflow-y-auto custom-scrollbar p-4 sm:p-8 animate-fade-in">
@@ -192,8 +174,7 @@ export const MetricsSection: React.FC = () => {
                 Learning Metrics
             </h1>
             <p className="text-gray-500 dark:text-gray-400 mt-2 max-w-2xl">
-                Analysis of your cognitive performance across 10 dimensions. 
-                Scores are on a 1-5 scale. <span className="font-semibold text-gray-700 dark:text-gray-300">Passing requires ≥4 for Core metrics and ≥3 for Advanced.</span>
+                Real-time analysis of your cognitive performance based on {quizHistory.length} completed quizzes.
             </p>
         </div>
         <div className="flex items-center gap-4 bg-white dark:bg-gray-900 p-3 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
@@ -202,8 +183,8 @@ export const MetricsSection: React.FC = () => {
                 <div className="text-2xl font-bold text-gray-900 dark:text-white">{overallScore} <span className="text-sm text-gray-400 font-normal">/ 5.0</span></div>
             </div>
             <div className="h-8 w-px bg-gray-200 dark:bg-gray-700"></div>
-            <Button variant="ghost" onClick={handleRefresh} icon={<RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`}/>}>
-                Update
+            <Button variant="ghost" icon={<RefreshCw className="w-4 h-4" />}>
+                Live Data
             </Button>
         </div>
       </div>
@@ -212,8 +193,6 @@ export const MetricsSection: React.FC = () => {
         
         {/* LEFT COLUMN: Visuals & Summary */}
         <div className="lg:col-span-5 space-y-8">
-            
-            {/* Radar Chart Card */}
             <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-gray-800 flex flex-col items-center justify-center relative">
                 <h3 className="absolute top-6 left-6 font-bold text-gray-900 dark:text-white flex items-center gap-2">
                     <Brain className="w-4 h-4 text-purple-500" />
@@ -222,19 +201,8 @@ export const MetricsSection: React.FC = () => {
                 <div className="mt-8 mb-4">
                     {renderRadarChart()}
                 </div>
-                <div className="flex gap-6 text-xs text-gray-500">
-                    <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full bg-indigo-500"></div>
-                        <span>Your Score</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full border-2 border-blue-400 border-dashed"></div>
-                        <span>Required</span>
-                    </div>
-                </div>
             </div>
 
-            {/* Blind Spot Analysis */}
             <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-gray-800">
                 <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4">
                     <AlertTriangle className="w-5 h-5 text-amber-500" />
@@ -246,13 +214,13 @@ export const MetricsSection: React.FC = () => {
                         <CheckCircle className="w-8 h-8 text-green-500 mx-auto mb-2" />
                         <h4 className="font-bold text-green-800 dark:text-green-300">All Systems Go!</h4>
                         <p className="text-sm text-green-700 dark:text-green-400 mt-1">
-                            You are meeting or exceeding all required thresholds for this topic.
+                            You are meeting or exceeding all required thresholds.
                         </p>
                     </div>
                 ) : (
                     <div className="space-y-3">
                         <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                            The following areas are below the required threshold for mastery:
+                            The following areas are below the required threshold:
                         </p>
                         {blindSpots.map(metric => (
                             <div key={metric.id} className="p-3 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-lg flex items-start gap-3">
@@ -265,19 +233,15 @@ export const MetricsSection: React.FC = () => {
                                         Req: {metric.required} • {metric.category}
                                     </div>
                                 </div>
-                                <Button className="ml-auto text-xs py-1 px-2 h-auto" variant="secondary">Remediate</Button>
                             </div>
                         ))}
                     </div>
                 )}
             </div>
-
         </div>
 
         {/* RIGHT COLUMN: Detailed Metrics */}
         <div className="lg:col-span-7 space-y-6">
-            
-            {/* Heatmap / Legend */}
             <div className="flex flex-wrap gap-2 justify-between items-center p-4 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800">
                 {[1, 2, 3, 4, 5].map(score => (
                     <div key={score} className="flex items-center gap-2">
@@ -315,19 +279,9 @@ export const MetricsSection: React.FC = () => {
                                     {metric.score} / 5
                                 </div>
                             </div>
-                            
-                            {/* Progress Bar */}
                             <div className="relative h-2.5 bg-gray-100 dark:bg-gray-800 rounded-full mt-3 overflow-hidden">
-                                <div 
-                                    className={`absolute top-0 left-0 h-full rounded-full transition-all duration-1000 ease-out ${getBarColor(metric.score, metric.required)}`}
-                                    style={{ width: `${(metric.score / 5) * 100}%` }}
-                                ></div>
-                                {/* Threshold Marker */}
-                                <div 
-                                    className="absolute top-0 bottom-0 w-0.5 bg-black/20 dark:bg-white/30 z-10"
-                                    style={{ left: `${(metric.required / 5) * 100}%` }}
-                                    title={`Required: ${metric.required}`}
-                                ></div>
+                                <div className={`absolute top-0 left-0 h-full rounded-full transition-all duration-1000 ease-out ${getBarColor(metric.score, metric.required)}`} style={{ width: `${(metric.score / 5) * 100}%` }}></div>
+                                <div className="absolute top-0 bottom-0 w-0.5 bg-black/20 dark:bg-white/30 z-10" style={{ left: `${(metric.required / 5) * 100}%` }} title={`Required: ${metric.required}`}></div>
                             </div>
                         </div>
                     ))}

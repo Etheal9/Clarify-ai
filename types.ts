@@ -39,6 +39,28 @@ export interface SourceItem {
   metadata: string; // e.g. "youtube.com • 15 mins"
   isSelected: boolean;
   file?: File; // Store actual file if it's a local upload
+  content?: string; // Extracted text content for AI context
+}
+
+export interface MistakeItem {
+  id: string;
+  questionId: string;
+  questionText: string;
+  userAnswer: string;
+  correctAnswer: string;
+  category: string; // e.g. "Conceptual", "Calculation"
+  note: string;
+  topic: string;
+  timestamp: number;
+}
+
+export interface QuizResult {
+  id: string;
+  topic: string;
+  difficulty: string; // 'Easy' | 'Medium' | 'Hard'
+  score: number;
+  totalQuestions: number;
+  timestamp: number;
 }
 
 // --- QUIZ TYPES ---

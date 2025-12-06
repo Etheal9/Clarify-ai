@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { SourceItem } from '../types';
 import { Button } from './Button';
+import { extractTextFromPdf } from '../services/pdfUtils';
 import { Youtube, FileText, Globe, Image as ImageIcon, Trash2, Upload, Link as LinkIcon, CheckSquare, Square } from 'lucide-react';
 
 interface PasteLinkSectionProps {
@@ -19,6 +20,7 @@ export const PasteLinkSection: React.FC<PasteLinkSectionProps> = ({
   onDeleteSelected
 }) => {
   const [inputValue, setInputValue] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // --- HELPERS ---
@@ -51,32 +53,54 @@ export const PasteLinkSection: React.FC<PasteLinkSectionProps> = ({
         title,
         url: inputValue,
         metadata,
-        isSelected: true
+        isSelected: true,
+        content: `Source URL: ${inputValue}` // Basic placeholder content for URLs
     };
 
     onAddSource(newItem);
     setInputValue('');
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
-
-      let type: SourceItem['type'] = 'website';
-      if (file.type === 'application/pdf') type = 'pdf';
-      else if (file.type.startsWith('image/')) type = 'image';
       
-      const newItem: SourceItem = {
-          id: Date.now().toString(),
-          type,
-          title: file.name,
-          metadata: `Local File • ${(file.size / 1024 / 1024).toFixed(1)} MB`,
-          isSelected: true,
-          file: file
-      };
+      setIsUploading(true);
 
-      onAddSource(newItem);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      try {
+        let type: SourceItem['type'] = 'website';
+        let extractedContent = '';
+
+        if (file.type === 'application/pdf') {
+            type = 'pdf';
+            extractedContent = await extractTextFromPdf(file);
+        } else if (file.type.startsWith('image/')) {
+            type = 'image';
+            // In a real app, we might OCR here. For now:
+            extractedContent = `[Image File: ${file.name}]`;
+        } else if (file.type.startsWith('text/') || file.name.endsWith('.md') || file.name.endsWith('.txt')) {
+            type = 'website'; // Generic text doc
+            extractedContent = await file.text();
+        }
+        
+        const newItem: SourceItem = {
+            id: Date.now().toString(),
+            type,
+            title: file.name,
+            metadata: `Local File • ${(file.size / 1024 / 1024).toFixed(1)} MB`,
+            isSelected: true,
+            file: file,
+            content: extractedContent
+        };
+
+        onAddSource(newItem);
+      } catch (error) {
+        console.error("File processing failed", error);
+        alert("Failed to process file. Please try again.");
+      } finally {
+        setIsUploading(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -117,14 +141,16 @@ export const PasteLinkSection: React.FC<PasteLinkSectionProps> = ({
                     onKeyDown={handleKeyDown}
                     placeholder="Paste YouTube URL, Article Link, or drop PDF..." 
                     className="w-full p-4 pr-12 border border-gray-300 dark:border-gray-700 rounded-xl outline-none focus:border-black dark:focus:border-white transition-colors shadow-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                    disabled={isUploading}
                 />
                 {/* File Upload Trigger Icon */}
                 <button 
                     onClick={() => fileInputRef.current?.click()}
                     className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
                     title="Upload File"
+                    disabled={isUploading}
                 >
-                    <Upload className="w-5 h-5" />
+                    {isUploading ? <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Upload className="w-5 h-5" />}
                 </button>
                 <input 
                     type="file" 
@@ -136,7 +162,8 @@ export const PasteLinkSection: React.FC<PasteLinkSectionProps> = ({
              </div>
              <button 
                 onClick={handleImport}
-                className="bg-black dark:bg-white text-white dark:text-black px-8 rounded-xl font-bold hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors"
+                disabled={isUploading}
+                className="bg-black dark:bg-white text-white dark:text-black px-8 rounded-xl font-bold hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors disabled:opacity-50"
              >
                 Import
              </button>
