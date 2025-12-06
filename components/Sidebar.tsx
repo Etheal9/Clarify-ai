@@ -1,58 +1,44 @@
-import React, { useState } from 'react';
-import { Plus, MessageSquare, Edit2, Check, X, Trash2, Menu, X as CloseIcon } from 'lucide-react';
-import { ChatSession } from '../types';
+import React from 'react';
+import { ChatSession, MainView } from '../types';
 
 interface SidebarProps {
   isOpen: boolean;
-  width: number;
+  activeView: MainView;
+  onViewChange: (view: MainView) => void;
   sessions: ChatSession[];
   currentSessionId: string;
   onSelectSession: (id: string) => void;
   onNewSession: () => void;
-  onRenameSession: (id: string, newTitle: string) => void;
-  onDeleteSession: (id: string) => void;
   toggleSidebar: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   isOpen,
-  width,
+  activeView,
+  onViewChange,
   sessions,
   currentSessionId,
   onSelectSession,
   onNewSession,
-  onRenameSession,
-  onDeleteSession,
   toggleSidebar
 }) => {
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editTitle, setEditTitle] = useState('');
-
-  const startEditing = (session: ChatSession, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEditingId(session.id);
-    setEditTitle(session.title);
-  };
-
-  const saveTitle = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (editTitle.trim()) {
-      onRenameSession(id, editTitle);
-    }
-    setEditingId(null);
-  };
-
-  const cancelEditing = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEditingId(null);
-  };
-
-  const handleDelete = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (window.confirm('Are you sure you want to delete this chat?')) {
-      onDeleteSession(id);
-    }
-  };
+  
+  const renderButton = (view: MainView, iconClass: string, label: string) => (
+    <button 
+      onClick={() => onViewChange(view)}
+      className={`w-full sidebar-btn flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors group text-left overflow-hidden ${
+        activeView === view 
+          ? 'bg-gray-100 dark:bg-gray-800 text-black dark:text-white' 
+          : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-900 hover:text-black dark:hover:text-white'
+      }`}
+      title={label}
+    >
+      <i className={`ph ${iconClass} text-xl flex-shrink-0 ${activeView === view ? 'text-black dark:text-white' : 'group-hover:text-black dark:group-hover:text-white'}`}></i>
+      <span className={`sidebar-label transition-opacity duration-200 whitespace-nowrap ${!isOpen ? 'opacity-0 w-0 hidden' : 'opacity-100'}`}>
+        {label}
+      </span>
+    </button>
+  );
 
   return (
     <>
@@ -64,103 +50,80 @@ export const Sidebar: React.FC<SidebarProps> = ({
         onClick={toggleSidebar}
       />
 
-      {/* Sidebar Container */}
-      <div 
+      <aside 
         className={`
-          fixed inset-y-0 left-0 z-40 bg-black text-gray-100 flex flex-col border-r border-gray-800 transition-transform duration-300 ease-in-out
-          ${isOpen ? 'translate-x-0' : '-translate-x-full'}
-          lg:relative lg:translate-x-0 lg:transition-none
+          fixed lg:relative inset-y-0 left-0 z-40
+          bg-white dark:bg-black border-r border-gray-200 dark:border-gray-800 
+          flex flex-col justify-between p-4 flex-shrink-0 
+          transition-all duration-300 ease-in-out
+          ${isOpen ? 'w-64 translate-x-0' : 'w-20 -translate-x-full lg:translate-x-0 lg:w-20'}
         `}
-        style={{ 
-          width: window.innerWidth >= 1024 ? width : '280px',
-          display: !isOpen && window.innerWidth >= 1024 ? 'none' : 'flex'
-        }}
       >
-        {/* Header / New Chat */}
-        <div className="p-4 border-b border-gray-800 flex items-center gap-2">
-          <button
-            onClick={() => {
-              onNewSession();
-              if (window.innerWidth < 1024) toggleSidebar();
-            }}
-            className="flex-1 flex items-center justify-center gap-2 px-3 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-md"
-          >
-            <Plus className="w-5 h-5" />
-            <span className="font-medium">New Chat</span>
-          </button>
-          
-          <button 
-            onClick={toggleSidebar}
-            className="p-3 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors border border-gray-700/50 lg:hidden"
-            title="Close Sidebar"
-          >
-            <CloseIcon className="w-5 h-5" />
-          </button>
+        <div className="space-y-6">
+            {/* Toggle Button */}
+            <div className={`px-2 flex ${isOpen ? 'justify-start' : 'justify-center'}`}>
+                <button onClick={toggleSidebar} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors text-gray-500 dark:text-gray-400">
+                    <i className="ph ph-sidebar-simple text-2xl"></i>
+                </button>
+            </div>
+
+            {/* New Session Button */}
+            <button 
+                onClick={onNewSession} 
+                className={`
+                   w-full flex items-center bg-black dark:bg-white text-white dark:text-black rounded-xl font-semibold transition-all shadow-lg shadow-gray-200 dark:shadow-none overflow-hidden
+                   ${isOpen ? 'px-4 py-3 gap-3' : 'p-3 justify-center'}
+                `}
+                title="New Session"
+            >
+                <i className="ph ph-plus text-lg flex-shrink-0"></i>
+                {isOpen && (
+                   <>
+                    <span className="sidebar-label transition-opacity duration-200">New Session</span>
+                    <i className="ph ph-sparkle ml-auto text-yellow-300"></i>
+                   </>
+                )}
+            </button>
+
+            {/* Sidebar Navigation */}
+            <nav className="space-y-1">
+                {renderButton('paste-link', 'ph-link', 'Paste Link')}
+                {renderButton('metrics', 'ph-chart-bar', 'Metrics')}
+                {renderButton('projects', 'ph-folder', 'Projects')}
+                
+                {/* History Section - Adapted for Sessions */}
+                <div className="pt-4">
+                  {isOpen && <div className="px-4 pb-2 text-xs font-bold text-gray-400 uppercase tracking-wider">Recent</div>}
+                  {sessions.slice(0, 5).map(session => (
+                      <button
+                        key={session.id}
+                        onClick={() => onSelectSession(session.id)}
+                        className={`w-full flex items-center gap-3 px-4 py-2 text-sm rounded-lg transition-colors overflow-hidden ${
+                          currentSessionId === session.id 
+                            ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20' 
+                            : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-900'
+                        }`}
+                        title={session.title}
+                      >
+                         <i className="ph ph-clock-counter-clockwise text-lg flex-shrink-0"></i>
+                         <span className={`truncate transition-opacity duration-200 ${!isOpen ? 'opacity-0 w-0 hidden' : 'opacity-100'}`}>
+                           {session.title}
+                         </span>
+                      </button>
+                  ))}
+                </div>
+            </nav>
         </div>
 
-        {/* List */}
-        <div className="flex-1 overflow-y-auto py-2 custom-scrollbar">
-          <div className="px-4 pb-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            History
-          </div>
-          <div className="space-y-1 px-2">
-            {sessions.map((session) => (
-              <div
-                key={session.id}
-                onClick={() => {
-                  onSelectSession(session.id);
-                  if (window.innerWidth < 1024) toggleSidebar();
-                }}
-                className={`
-                  group flex items-center gap-3 px-3 py-3 rounded-lg cursor-pointer transition-colors relative
-                  ${currentSessionId === session.id ? 'bg-gray-900 text-white' : 'text-gray-400 hover:bg-gray-900/50 hover:text-gray-200'}
-                `}
-              >
-                <MessageSquare className="w-4 h-4 flex-shrink-0" />
-                
-                {editingId === session.id ? (
-                  <div className="flex-1 flex items-center gap-1 min-w-0">
-                    <input
-                      type="text"
-                      value={editTitle}
-                      onChange={(e) => setEditTitle(e.target.value)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="w-full bg-black text-white text-sm rounded px-1 py-0.5 border border-blue-500 focus:outline-none"
-                      autoFocus
-                      onKeyDown={(e) => {
-                        if(e.key === 'Enter') saveTitle(session.id, e as any);
-                        if(e.key === 'Escape') cancelEditing(e as any);
-                      }}
-                    />
-                    <button onClick={(e) => saveTitle(session.id, e)} className="p-1 hover:text-green-400"><Check className="w-3 h-3" /></button>
-                    <button onClick={cancelEditing} className="p-1 hover:text-red-400"><X className="w-3 h-3" /></button>
-                  </div>
-                ) : (
-                  <>
-                    <span className="flex-1 truncate text-sm">{session.title}</span>
-                    <div className="hidden group-hover:flex items-center gap-1 absolute right-2 bg-gray-900 pl-2">
-                      <button 
-                        onClick={(e) => startEditing(session, e)}
-                        className="p-1.5 hover:bg-gray-800 rounded text-gray-400 hover:text-white transition-colors"
-                        title="Rename"
-                      >
-                        <Edit2 className="w-3 h-3" />
-                      </button>
-                      <button 
-                        onClick={(e) => handleDelete(session.id, e)}
-                        className="p-1.5 hover:bg-red-900/50 rounded text-gray-400 hover:text-red-400 transition-colors"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
+        <div className="border-t border-gray-100 dark:border-gray-800 pt-4 space-y-2">
+            {renderButton('settings', 'ph-gear', 'Settings')}
+            
+            <div className={`flex items-center gap-3 px-4 py-2 mt-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900 rounded-lg overflow-hidden ${!isOpen ? 'justify-center px-0' : ''}`}>
+                <div className="w-8 h-8 bg-gradient-to-tr from-blue-500 to-purple-500 rounded-full flex-shrink-0"></div>
+                {isOpen && <div className="text-sm font-medium text-gray-700 dark:text-gray-200">User Profile</div>}
+            </div>
         </div>
-      </div>
+      </aside>
     </>
   );
 };

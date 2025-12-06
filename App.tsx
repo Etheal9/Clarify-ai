@@ -1,129 +1,90 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { InputSection } from './components/InputSection'; 
+import React, { useState, useEffect } from 'react';
+import { Sidebar } from './components/Sidebar';
+import { InputSection } from './components/InputSection';
 import { ExplanationSection } from './components/ExplanationSection';
 import { VisualSection } from './components/VisualSection';
-import { VerifySection } from './components/VerifySection';
 import { SimulationSection } from './components/SimulationSection';
-import { Sidebar } from './components/Sidebar';
-import { AppTab, GroundingSource, ChatSession, ChatMessage } from './types';
+import { VerifySection } from './components/VerifySection';
+import { TestSection } from './components/TestSection';
+import { TeachSection } from './components/TeachSection';
+import { PasteLinkSection } from './components/PasteLinkSection';
+import { MetricsSection } from './components/MetricsSection';
+import { AppTab, MainView, ChatSession, ChatMessage, GroundingSource, SourceItem } from './types';
 import { generateExplanation, generateVisual, verifyText, generateSimulation, editVisual, editSimulation } from './services/geminiService';
-import { BookOpen, Image as ImageIcon, Search, Gamepad2, Moon, Sun, Menu, MoreVertical } from 'lucide-react';
 
 const App: React.FC = () => {
-  // Session State
+  // --- STATE ---
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>('');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-
-  // Layout State for Resizing
-  const [sidebarWidth, setSidebarWidth] = useState(260);
-  const [rightPanelWidth, setRightPanelWidth] = useState(450);
-  const isResizingLeft = useRef(false);
-  const isResizingRight = useRef(false);
-
-  // App State
-  const [activeTab, setActiveTab] = useState<AppTab>(AppTab.EXPLANATION);
-  const [isDarkMode, setIsDarkMode] = useState(false);
   
-  // Processing States
-  const [isExplaining, setIsExplaining] = useState(false);
-  const [isVisualizing, setIsVisualizing] = useState(false);
-  const [isSimulating, setIsSimulating] = useState(false);
-  const [isVerifying, setIsVerifying] = useState(false);
+  // Layout State
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [activeView, setActiveView] = useState<MainView>('learning');
+  const [activeSubTab, setActiveSubTab] = useState<AppTab>(AppTab.EXPLANATION);
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
-  // Data States (Specific to current turn)
+  // AI Processing State
+  const [isProcessing, setIsProcessing] = useState(false);
   const [explanation, setExplanation] = useState('');
   const [visualBase64, setVisualBase64] = useState<string | null>(null);
   const [simulationCode, setSimulationCode] = useState<string | null>(null);
   const [verificationData, setVerificationData] = useState<{ explanation: string; sources: GroundingSource[] } | null>(null);
 
-  // Initial Load
+  // Context & Sources
+  const [lastContext, setLastContext] = useState<string>('');
+  const [sources, setSources] = useState<SourceItem[]>([
+      { id: '1', type: 'youtube', title: 'Introduction to Thermodynamics', metadata: 'youtube.com • 15 mins • Uploaded 2h ago', isSelected: true },
+      { id: '2', type: 'pdf', title: 'Chapter 4: Entropy & Heat.pdf', metadata: 'Local File • 2.4 MB', isSelected: true },
+  ]);
+
+  // --- INITIALIZATION ---
   useEffect(() => {
     const initialSession: ChatSession = {
       id: Date.now().toString(),
-      title: 'New Chat',
+      title: 'Thermodynamics Study',
       messages: [],
       createdAt: Date.now()
     };
     setSessions([initialSession]);
     setCurrentSessionId(initialSession.id);
-
-    // Responsive Sidebar default
-    if (window.innerWidth < 1024) {
-      setIsSidebarOpen(false);
+    setLastContext("Thermodynamics basic laws and entropy"); // Default context for demo
+    
+    // Check system preference for dark mode
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        setIsDarkMode(true);
     }
   }, []);
 
-  // Resizing Logic
-  const startResizingLeft = useCallback(() => {
-    isResizingLeft.current = true;
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-  }, []);
-
-  const startResizingRight = useCallback(() => {
-    isResizingRight.current = true;
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-  }, []);
-
-  const stopResizing = useCallback(() => {
-    isResizingLeft.current = false;
-    isResizingRight.current = false;
-    document.body.style.cursor = '';
-    document.body.style.userSelect = '';
-  }, []);
-
-  const resize = useCallback((e: MouseEvent) => {
-    if (isResizingLeft.current) {
-      const newWidth = e.clientX;
-      if (newWidth > 200 && newWidth < 480) {
-        setSidebarWidth(newWidth);
-      }
-    } else if (isResizingRight.current) {
-      const newWidth = window.innerWidth - e.clientX;
-      if (newWidth > 300 && newWidth < 800) {
-        setRightPanelWidth(newWidth);
-      }
-    }
-  }, []);
-
+  // Responsive Sidebar
   useEffect(() => {
-    window.addEventListener('mousemove', resize);
-    window.addEventListener('mouseup', stopResizing);
-    return () => {
-      window.removeEventListener('mousemove', resize);
-      window.removeEventListener('mouseup', stopResizing);
+    const handleResize = () => {
+        if (window.innerWidth < 1024) setIsSidebarOpen(false);
+        else setIsSidebarOpen(true);
     };
-  }, [resize, stopResizing]);
+    window.addEventListener('resize', handleResize);
+    handleResize(); // Initial check
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
+  // --- HANDLERS ---
   const getCurrentSession = () => sessions.find(s => s.id === currentSessionId);
+  
+  const updateCurrentSessionMessages = (newMessages: ChatMessage[]) => {
+    setSessions(prev => prev.map(s => s.id === currentSessionId ? { ...s, messages: newMessages } : s));
+  };
 
   const createNewSession = () => {
     const newSession: ChatSession = {
-      id: Date.now().toString(),
-      title: 'New Chat',
-      messages: [],
-      createdAt: Date.now()
+        id: Date.now().toString(),
+        title: 'New Session',
+        messages: [],
+        createdAt: Date.now()
     };
-    setSessions(prev => [newSession, ...prev]);
+    setSessions([newSession, ...sessions]);
     setCurrentSessionId(newSession.id);
     resetOutputs();
-  };
-
-  const deleteSession = (id: string) => {
-    const newSessions = sessions.filter(s => s.id !== id);
-    setSessions(newSessions);
-    if (currentSessionId === id && newSessions.length > 0) {
-      setCurrentSessionId(newSessions[0].id);
-      resetOutputs();
-    } else if (newSessions.length === 0) {
-      createNewSession();
-    }
-  };
-
-  const renameSession = (id: string, newTitle: string) => {
-    setSessions(prev => prev.map(s => s.id === id ? { ...s, title: newTitle } : s));
+    setActiveView('learning');
+    setLastContext('');
   };
 
   const resetOutputs = () => {
@@ -133,306 +94,257 @@ const App: React.FC = () => {
     setVerificationData(null);
   };
 
-  const updateCurrentSessionMessages = (newMessages: ChatMessage[]) => {
-    setSessions(prev => prev.map(s => 
-      s.id === currentSessionId ? { ...s, messages: newMessages } : s
-    ));
-  };
-
-  const addBotMessage = (text: string, currentMsgs: ChatMessage[]) => {
-     const aiMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'model',
-        text: text,
-        timestamp: Date.now()
-      };
-      updateCurrentSessionMessages([...currentMsgs, aiMsg]);
-  };
-
   const handleSendMessage = async (text: string) => {
     const session = getCurrentSession();
     if (!session) return;
 
-    // 1. Add User Message
-    const userMsg: ChatMessage = {
-      id: Date.now().toString(),
-      role: 'user',
-      text: text,
-      timestamp: Date.now()
-    };
-    
+    setLastContext(text); // Update context for future quizzes
+
+    // 1. User Message
+    const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', text, timestamp: Date.now() };
     let updatedMessages = [...session.messages, userMsg];
     updateCurrentSessionMessages(updatedMessages);
 
-    // Update Title if it's the first message
+    // Update Title if first message
     if (session.messages.length === 0) {
-      const newTitle = text.slice(0, 30) + (text.length > 30 ? '...' : '');
-      renameSession(session.id, newTitle);
+        setSessions(prev => prev.map(s => s.id === currentSessionId ? { ...s, title: text.slice(0, 30) } : s));
     }
 
-    // 2. Determine Action based on Tab Context ("Chat to Change")
-    // If user is on Visuals Tab and we have an image -> Edit Image
-    if (activeTab === AppTab.VISUALS && visualBase64) {
-        setIsVisualizing(true);
-        try {
+    // 2. Logic to dispatch to AI
+    setIsProcessing(true);
+    try {
+        // If in "Visuals" tab and have image -> Edit Image
+        if (activeView === 'learning' && activeSubTab === AppTab.VISUALS && visualBase64) {
             const newImage = await editVisual(visualBase64, text);
             setVisualBase64(newImage);
-            addBotMessage("I've updated the infographic based on your request.", updatedMessages);
-        } catch (e) {
-            addBotMessage("Sorry, I couldn't edit the image.", updatedMessages);
-        } finally {
-            setIsVisualizing(false);
         }
-        return;
-    }
-
-    // If user is on Simulation Tab and we have code -> Edit Simulation
-    if (activeTab === AppTab.SIMULATION && simulationCode) {
-        setIsSimulating(true);
-        try {
+        // If in "Simulation" tab and have code -> Edit Sim
+        else if (activeView === 'learning' && activeSubTab === AppTab.SIMULATION && simulationCode) {
             const newCode = await editSimulation(simulationCode, text);
             setSimulationCode(newCode);
-            addBotMessage("I've updated the simulation with your changes.", updatedMessages);
-        } catch (e) {
-            addBotMessage("Sorry, I couldn't update the simulation.", updatedMessages);
-        } finally {
-            setIsSimulating(false);
         }
-        return;
-    }
+        // Else -> Generate All (Default Flow)
+        else {
+            setActiveView('learning'); // Force view to learning
+            setActiveSubTab(AppTab.EXPLANATION); // Start with explanation
+            
+            // Parallel generation
+            const [exp, vis, sim, ver] = await Promise.allSettled([
+                generateExplanation(text),
+                generateVisual(text),
+                generateSimulation(text),
+                verifyText(text)
+            ]);
 
-    // Default: New Query -> Reset and Generate All
-    resetOutputs();
-    setActiveTab(AppTab.EXPLANATION); // Switch to explanation initially
-
-    setIsExplaining(true);
-    setIsVisualizing(true);
-    setIsSimulating(true);
-
-    try {
-      const [expResult, visResult, simResult] = await Promise.allSettled([
-        generateExplanation(text),
-        generateVisual(text),
-        generateSimulation(text)
-      ]);
-
-      let botResponse = "";
-
-      // Handle Explanation
-      if (expResult.status === 'fulfilled') {
-        setExplanation(expResult.value);
-        botResponse += "I've analyzed that for you. Check the 'Explain' tab for details.\n";
-      } else {
-        setExplanation("Failed to generate explanation.");
-      }
-      setIsExplaining(false);
-
-      // Handle Visuals
-      if (visResult.status === 'fulfilled') {
-        setVisualBase64(visResult.value);
-        botResponse += "I also created a visual infographic.\n";
-      }
-      setIsVisualizing(false);
-
-      // Handle Simulation
-      if (simResult.status === 'fulfilled') {
-        setSimulationCode(simResult.value);
-        botResponse += "And I built a simulation to demonstrate the concept.";
-      }
-      setIsSimulating(false);
-
-      // Add Final AI Confirmation
-      addBotMessage(botResponse || "I processed your request, but something went wrong.", updatedMessages);
-
-    } catch (error) {
-      console.error("Processing error", error);
-      setIsExplaining(false);
-      setIsVisualizing(false);
-      setIsSimulating(false);
-    }
-  };
-
-  const handleVerify = async () => {
-    const session = getCurrentSession();
-    const lastUserMsg = [...(session?.messages || [])].reverse().find(m => m.role === 'user');
-    
-    if (!lastUserMsg) return;
-    
-    setIsVerifying(true);
-    try {
-      const data = await verifyText(lastUserMsg.text);
-      setVerificationData(data);
-    } catch (error) {
-      alert("Verification failed. Please try again.");
+            if (exp.status === 'fulfilled') setExplanation(exp.value);
+            if (vis.status === 'fulfilled') setVisualBase64(vis.value);
+            if (sim.status === 'fulfilled') setSimulationCode(sim.value);
+            if (ver.status === 'fulfilled') setVerificationData(ver.value);
+        }
+    } catch (e) {
+        console.error("AI Error:", e);
     } finally {
-      setIsVerifying(false);
+        setIsProcessing(false);
     }
   };
 
-  const handleRegenerateVisual = async () => {
-    const session = getCurrentSession();
-    const lastUserMsg = [...(session?.messages || [])].reverse().find(m => m.role === 'user');
-    if (!lastUserMsg) return;
-
-    setIsVisualizing(true);
-    setVisualBase64(null);
-    generateVisual(lastUserMsg.text)
-        .then(setVisualBase64)
-        .catch(e => alert("Failed to regenerate."))
-        .finally(() => setIsVisualizing(false));
+  // Source Handlers
+  const handleAddSource = (item: SourceItem) => {
+      setSources(prev => [item, ...prev]);
+  };
+  const handleToggleSource = (id: string) => {
+      setSources(prev => prev.map(s => s.id === id ? { ...s, isSelected: !s.isSelected } : s));
+  };
+  const handleDeleteSource = (id: string) => {
+      setSources(prev => prev.filter(s => s.id !== id));
+  };
+  const handleDeleteSelected = () => {
+      setSources(prev => prev.filter(s => !s.isSelected));
   };
 
-  const handleRegenerateSimulation = async () => {
-    const session = getCurrentSession();
-    const lastUserMsg = [...(session?.messages || [])].reverse().find(m => m.role === 'user');
-    if (!lastUserMsg) return;
 
-    setIsSimulating(true);
-    setSimulationCode(null);
-    generateSimulation(lastUserMsg.text)
-        .then(setSimulationCode)
-        .catch(e => alert("Failed to regenerate simulation."))
-        .finally(() => setIsSimulating(false));
-  };
-
-  const currentSession = getCurrentSession();
-  const hasArtifactContext = !!((activeTab === AppTab.VISUALS && visualBase64) || (activeTab === AppTab.SIMULATION && simulationCode));
+  // --- RENDER HELPERS ---
+  const renderSubNav = () => (
+    <div className="bg-white dark:bg-black border-b border-gray-100 dark:border-gray-800 px-4 sm:px-8 py-0 flex items-center justify-center gap-4 sm:gap-8 shadow-[inset_0_-1px_0_#f3f4f6] dark:shadow-[inset_0_-1px_0_#262626] transition-all overflow-x-auto">
+        {[
+            { id: AppTab.EXPLANATION, icon: 'ph-article', label: 'Explanation' },
+            { id: AppTab.VISUALS, icon: 'ph-eye', label: 'Visualizing' },
+            { id: AppTab.SIMULATION, icon: 'ph-flask', label: 'Simulation' },
+            { id: AppTab.VERIFY, icon: 'ph-shield-check', label: 'Verification' }
+        ].map(tab => (
+            <button
+                key={tab.id}
+                onClick={() => setActiveSubTab(tab.id)}
+                className={`
+                    text-sm font-medium py-3 flex items-center gap-2 border-b-2 transition-all whitespace-nowrap
+                    ${activeSubTab === tab.id 
+                        ? 'text-indigo-600 dark:text-indigo-400 border-indigo-600 dark:border-indigo-400 font-semibold' 
+                        : 'text-gray-500 dark:text-gray-500 hover:text-black dark:hover:text-gray-300 border-transparent hover:border-gray-300 dark:hover:border-gray-700'}
+                `}
+            >
+                <i className={`ph ${tab.icon} text-lg`}></i>
+                {tab.label}
+            </button>
+        ))}
+    </div>
+  );
 
   return (
-    <div className={`${isDarkMode ? 'dark' : ''} h-screen flex flex-col overflow-hidden`}>
-      <div className="flex h-full bg-white dark:bg-black font-sans text-gray-900 dark:text-gray-100 transition-colors duration-200">
+    <div className={`${isDarkMode ? 'dark' : ''} h-screen flex text-gray-800 dark:text-gray-100 overflow-hidden font-sans`}>
         
-        {/* LEFT COLUMN: Sidebar */}
+        {/* SIDEBAR */}
         <Sidebar 
-          isOpen={isSidebarOpen}
-          width={sidebarWidth}
-          toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-          sessions={sessions}
-          currentSessionId={currentSessionId}
-          onSelectSession={(id) => {
-            setCurrentSessionId(id);
-            resetOutputs(); 
-          }}
-          onNewSession={createNewSession}
-          onRenameSession={renameSession}
-          onDeleteSession={deleteSession}
+            isOpen={isSidebarOpen}
+            activeView={activeView}
+            onViewChange={setActiveView}
+            sessions={sessions}
+            currentSessionId={currentSessionId}
+            onSelectSession={(id) => { setCurrentSessionId(id); resetOutputs(); }}
+            onNewSession={createNewSession}
+            toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
         />
 
-        {/* LEFT RESIZER (Desktop Only) */}
-        {isSidebarOpen && (
-          <div
-            className="w-1 bg-gray-200 dark:bg-gray-800 hover:bg-blue-400 cursor-col-resize hidden lg:block z-10 transition-colors"
-            onMouseDown={startResizingLeft}
-          />
-        )}
+        {/* MAIN CONTENT */}
+        <main className="flex-1 flex flex-col relative bg-white dark:bg-black transition-colors duration-200 min-w-0">
+            
+            {/* HEADER */}
+            <header className="h-16 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between px-4 sm:px-8 bg-white dark:bg-black z-10 shrink-0">
+                <div className="font-bold text-xl tracking-tight flex items-center gap-2 text-gray-900 dark:text-white">
+                    <div className="w-6 h-6 bg-black dark:bg-white rounded-md"></div>
+                    <span>Clarify AI</span>
+                </div>
 
-        {/* MIDDLE COLUMN: Main Chat */}
-        <div className="flex-1 flex flex-col h-full min-w-0 bg-white dark:bg-gray-900 relative">
-             
-             {/* Header */}
-             <header className="flex-none bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center justify-between z-10">
-                <div className="flex items-center gap-3">
-                    <button 
-                        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                        className="p-2 -ml-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 transition-colors"
-                        title={isSidebarOpen ? "Close Sidebar" : "Open Sidebar"}
-                    >
-                        <Menu className="w-5 h-5" />
-                    </button>
-                    <h1 className="text-lg font-bold tracking-tight text-gray-900 dark:text-white">Clarify<span className="text-blue-500">AI</span></h1>
+                {/* Main Tabs */}
+                <div className="flex space-x-1 bg-gray-100 dark:bg-gray-900 p-1 rounded-lg overflow-x-auto max-w-[200px] sm:max-w-none">
+                    {[
+                        { id: 'learning', icon: 'ph-book-open-text', label: 'Learning' },
+                        { id: 'test', icon: 'ph-check-circle', label: 'Test' },
+                        { id: 'teach', icon: 'ph-chalkboard-teacher', label: 'Teach' }
+                    ].map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveView(tab.id as MainView)}
+                            className={`
+                                px-3 sm:px-4 py-1.5 font-medium rounded-md text-sm flex items-center gap-2 transition-all whitespace-nowrap
+                                ${activeView === tab.id 
+                                    ? 'bg-white dark:bg-gray-800 text-black dark:text-white shadow-sm' 
+                                    : 'text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white'}
+                            `}
+                        >
+                            <i className={`ph ${tab.icon}`}></i>
+                            {tab.label}
+                        </button>
+                    ))}
                 </div>
-                <div className="flex items-center gap-2">
-                   {/* Mobile Right Panel Toggle could go here if needed, but tabs act as toggle */}
-                  <button
-                      onClick={() => setIsDarkMode(!isDarkMode)}
-                      className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 transition-colors"
-                  >
-                      {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-                  </button>
-                </div>
+
+                {/* Dark Mode Toggle */}
+                <button 
+                    onClick={() => setIsDarkMode(!isDarkMode)}
+                    className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-500 dark:text-gray-400"
+                >
+                    {isDarkMode ? <i className="ph ph-sun text-xl"></i> : <i className="ph ph-moon text-xl"></i>}
+                </button>
             </header>
 
-            <InputSection 
-                messages={currentSession?.messages || []}
-                onSendMessage={handleSendMessage}
-                isProcessing={isExplaining || isVisualizing || isSimulating}
-                activeTab={activeTab}
-                hasArtifactContext={hasArtifactContext}
-            />
-        </div>
+            {/* SUB-NAV (Only for Learning) */}
+            {activeView === 'learning' && renderSubNav()}
 
-        {/* RIGHT RESIZER (Desktop Only) */}
-        <div
-          className="w-1 bg-gray-200 dark:bg-gray-800 hover:bg-blue-400 cursor-col-resize hidden lg:block z-10 transition-colors"
-          onMouseDown={startResizingRight}
-        />
+            {/* VIEW CONTENT CONTAINER */}
+            <div className="flex-1 overflow-y-auto relative pb-32 scroll-smooth bg-gray-50/50 dark:bg-[#0a0a0a]">
+                
+                {/* 1. LEARNING VIEW */}
+                {activeView === 'learning' && (
+                    <div className="h-full flex flex-col max-w-5xl mx-auto w-full pt-6 px-4 sm:px-8">
+                        
+                        {/* Gemini Insight Banner */}
+                        {!explanation && !isProcessing && (
+                            <div className="w-full mb-8 animate-fade-in">
+                                <div className="bg-gradient-to-r from-violet-50 to-indigo-50 dark:from-violet-900/10 dark:to-indigo-900/10 border border-indigo-100 dark:border-indigo-900 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between shadow-sm relative overflow-hidden">
+                                    <div className="absolute -right-4 -top-4 text-indigo-100 dark:text-indigo-900/20"><i className="ph ph-sparkle-fill text-9xl transform rotate-12"></i></div>
+                                    <div className="flex items-center gap-4 relative z-10 mb-4 sm:mb-0">
+                                        <div className="bg-white dark:bg-gray-800 p-2.5 rounded-xl shadow-sm text-indigo-600 dark:text-indigo-400 border border-indigo-50 dark:border-indigo-900"><i className="ph ph-sparkle-fill text-2xl"></i></div>
+                                        <div>
+                                            <h3 className="font-bold text-gray-800 dark:text-gray-100 text-sm flex items-center gap-2">Gemini Insight <span className="bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">New</span></h3>
+                                            <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">Start by asking a question or uploading a PDF below.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
-        {/* RIGHT COLUMN: Workspace (Tabs) */}
-        <div 
-            style={{ width: window.innerWidth >= 1024 ? rightPanelWidth : '100%' }}
-            className={`
-                flex flex-col bg-gray-50 dark:bg-gray-900 h-full border-l border-gray-200 dark:border-gray-800 shadow-xl lg:shadow-none 
-                absolute lg:relative right-0 z-20 transform transition-transform duration-300
-                ${/* Simple mobile logic: always available but can be toggled via layout if we had a button, currently tabs serve as view */ ''}
-                translate-x-full lg:translate-x-0
-                ${/* For now on mobile we might just hide it off screen unless we want a toggle? 
-                   But prompt says "make chat interface small". 
-                   Let's stick to the 3-col layout for desktop dragging. */ ''}
-            `}
-        >
-             
-             <div className="flex items-center px-4 pt-2 gap-1 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-x-auto no-scrollbar">
-                  {[
-                    { id: AppTab.EXPLANATION, icon: BookOpen, label: "Explain", color: "blue" },
-                    { id: AppTab.VISUALS, icon: ImageIcon, label: "Visuals", color: "purple" },
-                    { id: AppTab.SIMULATION, icon: Gamepad2, label: "Sim", color: "indigo" },
-                    { id: AppTab.VERIFY, icon: Search, label: "Verify", color: "green" },
-                  ].map(tab => (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`flex items-center gap-1.5 px-3 py-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap flex-1 justify-center ${
-                        activeTab === tab.id 
-                          ? `border-${tab.color}-500 text-${tab.color}-600 dark:text-${tab.color}-400 bg-${tab.color}-50/50 dark:bg-${tab.color}-900/10` 
-                          : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800'
-                      }`}
-                    >
-                      <tab.icon className="w-4 h-4" />
-                      {tab.label}
-                    </button>
-                  ))}
+                        {/* Content Area */}
+                        <div className="flex-1 bg-white dark:bg-black rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden min-h-[400px]">
+                            {activeSubTab === AppTab.EXPLANATION && <ExplanationSection explanation={explanation} isLoading={isProcessing && !explanation} />}
+                            {activeSubTab === AppTab.VISUALS && (
+                                <VisualSection 
+                                    imageBase64={visualBase64} 
+                                    isLoading={isProcessing && !visualBase64} 
+                                    regenerate={() => { /* logic */ }}
+                                />
+                            )}
+                            {activeSubTab === AppTab.SIMULATION && (
+                                <SimulationSection 
+                                    simulationCode={simulationCode}
+                                    isLoading={isProcessing && !simulationCode}
+                                    regenerate={() => { /* logic */ }}
+                                />
+                            )}
+                            {activeSubTab === AppTab.VERIFY && (
+                                <VerifySection 
+                                    data={verificationData}
+                                    isLoading={isProcessing && !verificationData}
+                                    onVerify={() => { /* logic */ }}
+                                    hasInput={true}
+                                />
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* 2. TEST VIEW (Active Assessment) */}
+                {activeView === 'test' && (
+                   <TestSection contextText={lastContext} />
+                )}
+
+                {/* 3. TEACH VIEW (Feynman Mode) */}
+                {activeView === 'teach' && (
+                    <TeachSection initialTopic={lastContext.slice(0, 50)} />
+                )}
+
+                {/* 4. PASTE LINK VIEW (Manage Sources) */}
+                {activeView === 'paste-link' && (
+                    <PasteLinkSection 
+                        sources={sources}
+                        onAddSource={handleAddSource}
+                        onToggleSource={handleToggleSource}
+                        onDeleteSource={handleDeleteSource}
+                        onDeleteSelected={handleDeleteSelected}
+                    />
+                )}
+                
+                {/* 5. METRICS VIEW */}
+                {activeView === 'metrics' && (
+                     <MetricsSection />
+                )}
+
+                {/* 6. OTHER VIEWS (Placeholders) */}
+                {(activeView !== 'learning' && activeView !== 'test' && activeView !== 'teach' && activeView !== 'paste-link' && activeView !== 'metrics') && (
+                     <div className="flex flex-col items-center justify-center pt-20 px-4">
+                        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-4 capitalize">{activeView.replace('-', ' ')}</h1>
+                        <p className="text-gray-500 dark:text-gray-400">This view is currently under construction.</p>
+                     </div>
+                )}
             </div>
+            
+            {/* FLOATING INPUT SECTION (Hidden in Teach Mode and Paste Link View) */}
+            {(activeView !== 'teach' && activeView !== 'paste-link') && (
+                <InputSection 
+                    onSendMessage={handleSendMessage}
+                    isProcessing={isProcessing}
+                />
+            )}
 
-            <div className="flex-1 overflow-hidden relative">
-                {activeTab === AppTab.EXPLANATION && (
-                <ExplanationSection explanation={explanation} isLoading={isExplaining} />
-                )}
-                {activeTab === AppTab.VISUALS && (
-                <VisualSection 
-                    imageBase64={visualBase64} 
-                    isLoading={isVisualizing} 
-                    regenerate={handleRegenerateVisual}
-                />
-                )}
-                {activeTab === AppTab.SIMULATION && (
-                <SimulationSection 
-                    simulationCode={simulationCode}
-                    isLoading={isSimulating}
-                    regenerate={handleRegenerateSimulation}
-                />
-                )}
-                {activeTab === AppTab.VERIFY && (
-                <VerifySection 
-                    data={verificationData} 
-                    isLoading={isVerifying} 
-                    onVerify={handleVerify}
-                    hasInput={!!(currentSession?.messages.length)}
-                />
-                )}
-            </div>
-        </div>
-
-      </div>
+        </main>
     </div>
   );
 };

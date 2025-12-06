@@ -1,5 +1,5 @@
-import { GoogleGenAI } from "@google/genai";
-import { GroundingSource } from "../types";
+import { GoogleGenAI, SchemaType, Type } from "@google/genai";
+import { GroundingSource, QuizData } from "../types";
 
 // Helper to get AI instance safely
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -226,5 +226,161 @@ export const verifyText = async (text: string): Promise<{ explanation: string; s
   } catch (error) {
     console.error("Verification error:", error);
     throw error;
+  }
+};
+
+/**
+ * Generates a comprehensive quiz with 4 types of questions.
+ */
+export const generateQuiz = async (text: string): Promise<QuizData> => {
+  if (!text) throw new Error("No context provided for quiz generation");
+  const ai = getAI();
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: `Generate a structured quiz based on the following text. 
+      The quiz MUST have 4 sections: 'choose' (Multiple Choice), 'fillBlank' (Fill in the blank), 'match' (Matching pairs), and 'answer' (Short Answer).
+      Each section MUST have exactly 5 questions.
+      
+      Text context: ${text.substring(0, 4000)}`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            topic: { type: Type.STRING, description: "A short 2-3 word topic title" },
+            choose: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING },
+                  question: { type: Type.STRING },
+                  options: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  correctAnswer: { type: Type.STRING }
+                },
+                required: ["id", "question", "options", "correctAnswer"]
+              }
+            },
+            fillBlank: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING },
+                  question: { type: Type.STRING, description: "Instruction like 'Fill in the blank'" },
+                  sentence: { type: Type.STRING, description: "Sentence with '___' as placeholder" },
+                  correctAnswer: { type: Type.STRING }
+                },
+                required: ["id", "question", "sentence", "correctAnswer"]
+              }
+            },
+            match: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING },
+                  question: { type: Type.STRING, description: "Instruction e.g. 'Match the terms'" },
+                  pairs: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        left: { type: Type.STRING },
+                        right: { type: Type.STRING }
+                      },
+                      required: ["left", "right"]
+                    }
+                  }
+                },
+                required: ["id", "question", "pairs"]
+              }
+            },
+            answer: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING },
+                  question: { type: Type.STRING },
+                  sampleAnswer: { type: Type.STRING }
+                },
+                required: ["id", "question", "sampleAnswer"]
+              }
+            }
+          },
+          required: ["topic", "choose", "fillBlank", "match", "answer"]
+        }
+      }
+    });
+
+    const jsonStr = response.text || "{}";
+    return JSON.parse(jsonStr) as QuizData;
+  } catch (error) {
+    console.error("Quiz generation error:", error);
+    throw error;
+  }
+};
+
+/**
+ * Creates a specialized Chat session for the Feynman Student Mode.
+ */
+export const createStudentSession = (topic: string) => {
+  const ai = getAI();
+  const chat = ai.chats.create({
+    model: 'gemini-2.5-flash',
+    config: {
+      systemInstruction: `You are a curious, university-level student named "Alex". The user is your teacher who is explaining the topic "${topic}" to you.
+      
+      Your Goal: Completely understand the topic "${topic}" by asking questions.
+
+      Behavior Guidelines:
+      1.  **Be inquisitive**: Listen carefully. If the user explains something, ask a follow-up question to clarify or deepen your understanding.
+      2.  **Be honest about confusion**: If the user uses jargon or complex terms without defining them, ask "What does that mean?" or "Can you give me an analogy?".
+      3.  **Active Listening**: Periodically summarize what you've heard to check if you got it right (e.g., "So, if I understand correctly...").
+      4.  **Student Persona**: You are polite, eager to learn, but strictly a student. Do NOT lecture the user. Do NOT act as an expert. Do NOT start explaining the topic yourself unless summarizing.
+      5.  **Brevity**: Keep your responses conversational and short (under 50 words) to allow the user to keep teaching.
+      6.  **Initiation**: Start the conversation by confirming you are ready to learn about ${topic}.
+      
+      Tone: Friendly, casual, attentive.`
+    }
+  });
+  return chat;
+};
+
+/**
+ * Sends a message (text or audio) to the student chat session.
+ */
+export const sendMessageToStudent = async (chat: any, text: string | null, audioBase64: string | null): Promise<string> => {
+  if (!chat) throw new Error("Chat session not initialized");
+
+  const parts = [];
+  
+  if (audioBase64) {
+      // Clean base64 if needed (remove data URL prefix)
+      const cleanAudio = audioBase64.replace(/^data:audio\/\w+;base64,/, "");
+      parts.push({ 
+          inlineData: { 
+              mimeType: 'audio/webm', // WebM is standard for browser MediaRecorder
+              data: cleanAudio 
+          } 
+      });
+  }
+  
+  if (text) {
+      parts.push({ text });
+  }
+
+  if (parts.length === 0) return "";
+
+  try {
+      // Pass the parts array directly as the message
+      const response = await chat.sendMessage({ message: parts });
+      return response.text || "";
+  } catch (error) {
+      console.error("Student Chat Error:", error);
+      throw error;
   }
 };

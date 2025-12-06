@@ -5,6 +5,8 @@ export enum AppTab {
   VERIFY = 'verify'
 }
 
+export type MainView = 'learning' | 'test' | 'teach' | 'metrics' | 'projects' | 'history' | 'settings' | 'paste-link';
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'model';
@@ -27,4 +29,54 @@ export interface GroundingSource {
 
 export interface GroundingMetadata {
   webSources: GroundingSource[];
+}
+
+export interface SourceItem {
+  id: string;
+  type: 'youtube' | 'pdf' | 'website' | 'image';
+  title: string;
+  url?: string;
+  metadata: string; // e.g. "youtube.com • 15 mins"
+  isSelected: boolean;
+  file?: File; // Store actual file if it's a local upload
+}
+
+// --- QUIZ TYPES ---
+
+export type QuestionType = 'choose' | 'fill-blank' | 'match' | 'answer';
+
+export interface QuestionBase {
+  id: string;
+  question: string;
+}
+
+export interface MultipleChoiceQuestion extends QuestionBase {
+  options: string[];
+  correctAnswer: string;
+}
+
+export interface FillBlankQuestion extends QuestionBase {
+  sentence: string; // Contains "___" for the blank
+  correctAnswer: string;
+}
+
+export interface MatchPair {
+  left: string;
+  right: string;
+}
+
+export interface MatchQuestion extends QuestionBase {
+  pairs: MatchPair[]; // usually 4-5 pairs per question set, or this represents one set
+}
+
+export interface ShortAnswerQuestion extends QuestionBase {
+  sampleAnswer: string; // Key points or ideal answer
+}
+
+export interface QuizData {
+  topic: string;
+  choose: MultipleChoiceQuestion[];
+  fillBlank: FillBlankQuestion[];
+  match: MatchQuestion[]; // For matching, we might just have one big set or multiple small sets. We'll do 5 sets.
+  answer: ShortAnswerQuestion[];
 }
