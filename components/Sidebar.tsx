@@ -34,7 +34,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       title={label}
     >
       <i className={`ph ${iconClass} text-xl flex-shrink-0 ${activeView === view ? 'text-black dark:text-white' : 'group-hover:text-black dark:group-hover:text-white'}`}></i>
-      <span className={`sidebar-label transition-opacity duration-200 whitespace-nowrap ${!isOpen ? 'opacity-0 w-0 hidden' : 'opacity-100'}`}>
+      <span className={`sidebar-label transition-opacity duration-200 whitespace-nowrap ${!isOpen ? 'lg:opacity-0 lg:w-0 lg:hidden' : 'opacity-100'}`}>
         {label}
       </span>
     </button>
@@ -44,15 +44,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <>
       {/* Mobile Overlay */}
       <div 
-        className={`fixed inset-0 bg-black/50 z-30 transition-opacity duration-300 lg:hidden ${
-          isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        className={`fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 lg:hidden ${
+          isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
         }`}
         onClick={toggleSidebar}
       />
 
       <aside 
         className={`
-          fixed lg:relative inset-y-0 left-0 z-40
+          fixed lg:relative inset-y-0 left-0 z-50
           bg-white dark:bg-black border-r border-gray-200 dark:border-gray-800 
           flex flex-col justify-between p-4 flex-shrink-0 
           transition-all duration-300 ease-in-out
@@ -60,10 +60,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
         `}
       >
         <div className="space-y-6">
-            {/* Toggle Button */}
-            <div className={`px-2 flex ${isOpen ? 'justify-start' : 'justify-center'}`}>
+            {/* Toggle Button (Hidden on Mobile, serves as width toggle on Desktop) */}
+            <div className={`px-2 hidden lg:flex ${isOpen ? 'justify-start' : 'justify-center'}`}>
                 <button onClick={toggleSidebar} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors text-gray-500 dark:text-gray-400">
                     <i className="ph ph-sidebar-simple text-2xl"></i>
+                </button>
+            </div>
+
+            {/* Mobile Header in Sidebar - Only Close Button */}
+            <div className="flex lg:hidden items-center justify-end px-2 mb-2">
+                <button onClick={toggleSidebar} className="p-2 text-gray-400 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-all">
+                    <i className="ph ph-x text-2xl"></i>
                 </button>
             </div>
 
@@ -106,7 +113,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         title={session.title}
                       >
                          <i className="ph ph-clock-counter-clockwise text-lg flex-shrink-0"></i>
-                         <span className={`truncate transition-opacity duration-200 ${!isOpen ? 'opacity-0 w-0 hidden' : 'opacity-100'}`}>
+                         <span className={`truncate transition-opacity duration-200 ${!isOpen ? 'lg:opacity-0 lg:w-0 lg:hidden' : 'opacity-100'}`}>
                            {session.title}
                          </span>
                       </button>

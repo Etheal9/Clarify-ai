@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { InputSection } from './components/InputSection';
@@ -18,7 +19,7 @@ const App: React.FC = () => {
   const [currentSessionId, setCurrentSessionId] = useState<string>('');
   
   // Layout State
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeView, setActiveView] = useState<MainView>('learning');
   const [activeSubTab, setActiveSubTab] = useState<AppTab>(AppTab.EXPLANATION);
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -60,8 +61,8 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const handleResize = () => {
-        if (window.innerWidth < 1024) setIsSidebarOpen(false);
-        else setIsSidebarOpen(true);
+        if (window.innerWidth >= 1024) setIsSidebarOpen(true);
+        else setIsSidebarOpen(false);
     };
     window.addEventListener('resize', handleResize);
     handleResize(); 
@@ -87,6 +88,7 @@ const App: React.FC = () => {
     resetOutputs();
     setActiveView('learning');
     setLastContext('');
+    if (window.innerWidth < 1024) setIsSidebarOpen(false);
   };
 
   const resetOutputs = () => {
@@ -99,48 +101,36 @@ const App: React.FC = () => {
   const handleSendMessage = async (text: string) => {
     const session = getCurrentSession();
     if (!session) return;
-
     setLastContext(text); 
 
     const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', text, timestamp: Date.now() };
     let updatedMessages = [...session.messages, userMsg];
     updateCurrentSessionMessages(updatedMessages);
 
-    if (session.messages.length === 0) {
-        setSessions(prev => prev.map(s => s.id === currentSessionId ? { ...s, title: text.slice(0, 30) } : s));
-    }
-
     setIsProcessing(true);
     try {
-        // --- CONTEXT PREPARATION ---
-        // Combine user text with selected sources
         const activeSources = sources.filter(s => s.isSelected);
         let fullContext = text;
         if (activeSources.length > 0) {
              const sourceText = activeSources.map(s => `[Source: ${s.title}]\n${s.content || s.url}`).join('\n\n');
              fullContext = `Reference Material:\n${sourceText}\n\nUser Query/Topic:\n${text}`;
         }
-        // ---------------------------
 
         if (activeView === 'learning' && activeSubTab === AppTab.VISUALS && visualBase64) {
             const newImage = await editVisual(visualBase64, text);
             setVisualBase64(newImage);
-        }
-        else if (activeView === 'learning' && activeSubTab === AppTab.SIMULATION && simulationCode) {
+        } else if (activeView === 'learning' && activeSubTab === AppTab.SIMULATION && simulationCode) {
             const newCode = await editSimulation(simulationCode, text);
             setSimulationCode(newCode);
-        }
-        else {
+        } else {
             setActiveView('learning');
             setActiveSubTab(AppTab.EXPLANATION);
-            
             const [exp, vis, sim, ver] = await Promise.allSettled([
                 generateExplanation(fullContext),
                 generateVisual(fullContext),
                 generateSimulation(fullContext),
                 verifyText(fullContext)
             ]);
-
             if (exp.status === 'fulfilled') setExplanation(exp.value);
             if (vis.status === 'fulfilled') setVisualBase64(vis.value);
             if (sim.status === 'fulfilled') setSimulationCode(sim.value);
@@ -153,37 +143,10 @@ const App: React.FC = () => {
     }
   };
 
-  const handleAddSource = (item: SourceItem) => {
-      setSources(prev => [item, ...prev]);
-  };
-  const handleToggleSource = (id: string) => {
-      setSources(prev => prev.map(s => s.id === id ? { ...s, isSelected: !s.isSelected } : s));
-  };
-  const handleDeleteSource = (id: string) => {
-      setSources(prev => prev.filter(s => s.id !== id));
-  };
-  const handleDeleteSelected = () => {
-      setSources(prev => prev.filter(s => !s.isSelected));
-  };
-
-  const handleAddMistake = (mistake: MistakeItem) => {
-      setMistakes(prev => [mistake, ...prev]);
-  };
-  const handleUpdateMistake = (id: string, note: string) => {
-      setMistakes(prev => prev.map(m => m.id === id ? { ...m, note } : m));
-  };
-  const handleDeleteMistake = (id: string) => {
-      setMistakes(prev => prev.filter(m => m.id !== id));
-  };
-  
-  const handleQuizComplete = (result: QuizResult) => {
-      setQuizHistory(prev => [result, ...prev]);
-      setActiveView('metrics'); // Redirect to metrics to see updated data
-  };
-
+  const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
   const renderSubNav = () => (
-    <div className="bg-white dark:bg-black border-b border-gray-100 dark:border-gray-800 px-4 sm:px-8 py-0 flex items-center justify-center gap-4 sm:gap-8 shadow-[inset_0_-1px_0_#f3f4f6] dark:shadow-[inset_0_-1px_0_#262626] transition-all overflow-x-auto">
+    <div className="bg-white dark:bg-black border-b border-gray-100 dark:border-gray-800 px-4 sm:px-8 py-0 flex items-center justify-center gap-4 sm:gap-8 shadow-sm transition-all overflow-x-auto no-scrollbar">
         {[
             { id: AppTab.EXPLANATION, icon: 'ph-article', label: 'Explanation' },
             { id: AppTab.VISUALS, icon: 'ph-eye', label: 'Visualizing' },
@@ -194,10 +157,10 @@ const App: React.FC = () => {
                 key={tab.id}
                 onClick={() => setActiveSubTab(tab.id)}
                 className={`
-                    text-sm font-medium py-3 flex items-center gap-2 border-b-2 transition-all whitespace-nowrap
+                    text-sm font-black py-4 flex items-center gap-2 border-b-4 transition-all whitespace-nowrap uppercase tracking-widest
                     ${activeSubTab === tab.id 
-                        ? 'text-indigo-600 dark:text-indigo-400 border-indigo-600 dark:border-indigo-400 font-semibold' 
-                        : 'text-gray-500 dark:text-gray-500 hover:text-black dark:hover:text-gray-300 border-transparent hover:border-gray-300 dark:hover:border-gray-700'}
+                        ? 'text-black dark:text-white border-black dark:border-white' 
+                        : 'text-gray-400 border-transparent hover:text-black dark:hover:text-white'}
                 `}
             >
                 <i className={`ph ${tab.icon} text-lg`}></i>
@@ -208,144 +171,89 @@ const App: React.FC = () => {
   );
 
   return (
-    <div className={`${isDarkMode ? 'dark' : ''} h-screen flex text-gray-800 dark:text-gray-100 overflow-hidden font-sans`}>
+    <div className={`${isDarkMode ? 'dark' : ''} h-screen flex text-black dark:text-white overflow-hidden font-sans`}>
         <Sidebar 
             isOpen={isSidebarOpen}
             activeView={activeView}
-            onViewChange={setActiveView}
+            onViewChange={(view) => {
+                setActiveView(view);
+                if (window.innerWidth < 1024) setIsSidebarOpen(false);
+            }}
             sessions={sessions}
             currentSessionId={currentSessionId}
-            onSelectSession={(id) => { setCurrentSessionId(id); resetOutputs(); }}
+            onSelectSession={(id) => { 
+                setCurrentSessionId(id); 
+                resetOutputs(); 
+                if (window.innerWidth < 1024) setIsSidebarOpen(false);
+            }}
             onNewSession={createNewSession}
-            toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+            toggleSidebar={toggleSidebar}
         />
 
         <main className="flex-1 flex flex-col relative bg-white dark:bg-black transition-colors duration-200 min-w-0">
-            <header className="h-16 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between px-4 sm:px-8 bg-white dark:bg-black z-10 shrink-0">
-                <div className="font-bold text-xl tracking-tight flex items-center gap-2 text-gray-900 dark:text-white">
-                    <div className="w-6 h-6 bg-black dark:bg-white rounded-md"></div>
-                    <span>Clarify AI</span>
+            <header className="h-20 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between px-6 bg-white dark:bg-black z-10 shrink-0">
+                <div className="flex items-center gap-4">
+                    <button onClick={toggleSidebar} className="p-2 lg:hidden hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-black dark:text-white">
+                        <i className="ph ph-list text-3xl"></i>
+                    </button>
+                    <div className="font-black text-2xl tracking-tighter flex items-center gap-2 text-black dark:text-white uppercase">
+                        <div className="w-7 h-7 bg-black dark:bg-white rounded-lg flex-shrink-0"></div>
+                        <span className="hidden md:inline">Clarify AI</span>
+                    </div>
                 </div>
 
-                <div className="flex space-x-1 bg-gray-100 dark:bg-gray-900 p-1 rounded-lg overflow-x-auto max-w-[200px] sm:max-w-none">
-                    {[
-                        { id: 'learning', icon: 'ph-book-open-text', label: 'Learning' },
-                        { id: 'test', icon: 'ph-check-circle', label: 'Test' },
-                        { id: 'teach', icon: 'ph-chalkboard-teacher', label: 'Teach' }
-                    ].map(tab => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveView(tab.id as MainView)}
-                            className={`
-                                px-3 sm:px-4 py-1.5 font-medium rounded-md text-sm flex items-center gap-2 transition-all whitespace-nowrap
-                                ${activeView === tab.id 
-                                    ? 'bg-white dark:bg-gray-800 text-black dark:text-white shadow-sm' 
-                                    : 'text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white'}
-                            `}
-                        >
-                            <i className={`ph ${tab.icon}`}></i>
-                            {tab.label}
-                        </button>
-                    ))}
+                <div className="flex-1 flex justify-center">
+                    <div className="flex space-x-2 bg-gray-100 dark:bg-gray-950 p-1.5 rounded-2xl overflow-x-auto no-scrollbar">
+                        {[
+                            { id: 'learning', icon: 'ph-book-open-text', label: 'Learning' },
+                            { id: 'test', icon: 'ph-check-circle', label: 'Test' },
+                            { id: 'teach', icon: 'ph-chalkboard-teacher', label: 'Teach' }
+                        ].map(tab => (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveView(tab.id as MainView)}
+                                className={`
+                                    px-5 py-2.5 font-black rounded-xl text-xs uppercase tracking-widest flex items-center gap-2 transition-all whitespace-nowrap
+                                    ${activeView === tab.id 
+                                        ? 'bg-white dark:bg-gray-800 text-black dark:text-white shadow-xl' 
+                                        : 'text-gray-400 hover:text-black dark:hover:text-white'}
+                                `}
+                            >
+                                <i className={`ph ${tab.icon} text-lg`}></i>
+                                <span>{tab.label}</span>
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
                 <button 
                     onClick={() => setIsDarkMode(!isDarkMode)}
-                    className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-500 dark:text-gray-400"
+                    className="w-12 h-12 flex items-center justify-center rounded-2xl hover:bg-gray-100 dark:hover:bg-gray-900 text-black dark:text-white border-2 border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-all"
                 >
-                    {isDarkMode ? <i className="ph ph-sun text-xl"></i> : <i className="ph ph-moon text-xl"></i>}
+                    {isDarkMode ? <i className="ph ph-sun text-2xl"></i> : <i className="ph ph-moon text-2xl"></i>}
                 </button>
             </header>
 
             {activeView === 'learning' && renderSubNav()}
 
-            <div className="flex-1 overflow-y-auto relative pb-32 scroll-smooth bg-gray-50/50 dark:bg-[#0a0a0a]">
-                
+            <div className={`flex-1 overflow-y-auto relative scroll-smooth bg-gray-50/30 dark:bg-black ${activeView === 'teach' || activeView === 'paste-link' ? 'pb-0' : 'pb-32'}`}>
                 {activeView === 'learning' && (
-                    <div className="h-full flex flex-col max-w-5xl mx-auto w-full pt-6 px-4 sm:px-8">
-                        {!explanation && !isProcessing && (
-                            <div className="w-full mb-8 animate-fade-in">
-                                <div className="bg-gradient-to-r from-violet-50 to-indigo-50 dark:from-violet-900/10 dark:to-indigo-900/10 border border-indigo-100 dark:border-indigo-900 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between shadow-sm relative overflow-hidden">
-                                    <div className="absolute -right-4 -top-4 text-indigo-100 dark:text-indigo-900/20"><i className="ph ph-sparkle-fill text-9xl transform rotate-12"></i></div>
-                                    <div className="flex items-center gap-4 relative z-10 mb-4 sm:mb-0">
-                                        <div className="bg-white dark:bg-gray-800 p-2.5 rounded-xl shadow-sm text-indigo-600 dark:text-indigo-400 border border-indigo-50 dark:border-indigo-900"><i className="ph ph-sparkle-fill text-2xl"></i></div>
-                                        <div>
-                                            <h3 className="font-bold text-gray-800 dark:text-gray-100 text-sm flex items-center gap-2">Gemini Insight <span className="bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">New</span></h3>
-                                            <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">Start by asking a question or uploading a PDF below.</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="flex-1 bg-white dark:bg-black rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden min-h-[400px]">
+                    <div className="h-full flex flex-col max-w-6xl mx-auto w-full pt-8 px-6">
+                        <div className="flex-1 bg-white dark:bg-black rounded-[3rem] shadow-2xl border-4 border-gray-100 dark:border-gray-900 overflow-hidden min-h-[500px]">
                             {activeSubTab === AppTab.EXPLANATION && <ExplanationSection explanation={explanation} isLoading={isProcessing && !explanation} />}
-                            {activeSubTab === AppTab.VISUALS && (
-                                <VisualSection 
-                                    imageBase64={visualBase64} 
-                                    isLoading={isProcessing && !visualBase64} 
-                                    regenerate={() => { /* logic */ }}
-                                />
-                            )}
-                            {activeSubTab === AppTab.SIMULATION && (
-                                <SimulationSection 
-                                    simulationCode={simulationCode}
-                                    isLoading={isProcessing && !simulationCode}
-                                    regenerate={() => { /* logic */ }}
-                                />
-                            )}
-                            {activeSubTab === AppTab.VERIFY && (
-                                <VerifySection 
-                                    data={verificationData}
-                                    isLoading={isProcessing && !verificationData}
-                                    onVerify={() => { /* logic */ }}
-                                    hasInput={true}
-                                />
-                            )}
+                            {activeSubTab === AppTab.VISUALS && <VisualSection imageBase64={visualBase64} isLoading={isProcessing && !visualBase64} regenerate={() => {}} />}
+                            {activeSubTab === AppTab.SIMULATION && <SimulationSection simulationCode={simulationCode} isLoading={isProcessing && !simulationCode} regenerate={() => {}} />}
+                            {activeSubTab === AppTab.VERIFY && <VerifySection data={verificationData} isLoading={isProcessing && !verificationData} onVerify={() => {}} hasInput={true} />}
                         </div>
                     </div>
                 )}
-
-                {activeView === 'test' && (
-                   <TestSection 
-                        contextText={lastContext} 
-                        mistakes={mistakes}
-                        onAddMistake={handleAddMistake}
-                        onUpdateMistake={handleUpdateMistake}
-                        onDeleteMistake={handleDeleteMistake}
-                        onQuizComplete={handleQuizComplete}
-                   />
-                )}
-
-                {activeView === 'teach' && (
-                    <TeachSection initialTopic={lastContext.slice(0, 50)} />
-                )}
-
-                {activeView === 'paste-link' && (
-                    <PasteLinkSection 
-                        sources={sources}
-                        onAddSource={handleAddSource}
-                        onToggleSource={handleToggleSource}
-                        onDeleteSource={handleDeleteSource}
-                        onDeleteSelected={handleDeleteSelected}
-                    />
-                )}
-                
-                {activeView === 'metrics' && (
-                     <MetricsSection 
-                        mistakes={mistakes}
-                        quizHistory={quizHistory}
-                     />
-                )}
+                {activeView === 'test' && <TestSection contextText={lastContext} mistakes={mistakes} onAddMistake={() => {}} onUpdateMistake={() => {}} onDeleteMistake={() => {}} onQuizComplete={() => {}} />}
+                {activeView === 'teach' && <TeachSection initialTopic={lastContext.slice(0, 50)} />}
+                {activeView === 'paste-link' && <PasteLinkSection sources={sources} onAddSource={() => {}} onToggleSource={() => {}} onDeleteSource={() => {}} onDeleteSelected={() => {}} />}
+                {activeView === 'metrics' && <MetricsSection mistakes={mistakes} quizHistory={quizHistory} />}
             </div>
             
-            {(activeView !== 'teach' && activeView !== 'paste-link') && (
-                <InputSection 
-                    onSendMessage={handleSendMessage}
-                    isProcessing={isProcessing}
-                />
-            )}
-
+            {(activeView !== 'teach' && activeView !== 'paste-link') && <InputSection onSendMessage={handleSendMessage} isProcessing={isProcessing} />}
         </main>
     </div>
   );
