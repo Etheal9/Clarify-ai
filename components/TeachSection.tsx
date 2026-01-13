@@ -1,7 +1,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, Send, Square, Volume2, VolumeX, GraduationCap, User, Brain, Hand, ChevronLeft, Globe } from 'lucide-react';
-import { createStudentSession, sendMessageToStudent, StudentType, generateSpeech } from '../services/geminiService';
+import { Mic, Send, Square, Volume2, VolumeX, GraduationCap, User, Brain, Hand, ChevronLeft, Globe, Info } from 'lucide-react';
+import { createStudentSession, sendMessageToStudent, generateSpeech } from '../services/geminiService';
+import { StudentType } from '../types';
 import { Button } from './Button';
 
 interface TeachSectionProps {
@@ -72,18 +73,18 @@ export const TeachSection: React.FC<TeachSectionProps> = ({ initialTopic = '' })
   const [students, setStudents] = useState<StudentState[]>([
     { 
         id: '1', name: 'ALEX', type: 'normal', isEnabled: true, isHandRaised: false, isSpeaking: false,
-        avatar: '🎓', description: 'Logical Learner', voice: 'Zephyr',
-        identity: 'Asks for facts and data-driven explanations.', session: null 
+        avatar: '🎓', description: 'The Fact-Finder', voice: 'Zephyr',
+        identity: 'Curious and polite. Alex asks for simple facts, definitions, and data-driven explanations to build a solid foundation.', session: null 
     },
     { 
         id: '2', name: 'BLAKE', type: 'argumentative', isEnabled: true, isHandRaised: false, isSpeaking: false,
-        avatar: '🧐', description: 'Critical Skeptic', voice: 'Puck',
-        identity: 'Challenges assumptions and looks for errors.', session: null 
+        avatar: '🧐', description: 'The Skeptic', voice: 'Puck',
+        identity: 'Critical and sharp. Blake challenges assumptions, looks for logical fallacies, and asks "But what about...?" to test your knowledge.', session: null 
     },
     { 
         id: '3', name: 'CHARLIE', type: 'creative', isEnabled: true, isHandRaised: false, isSpeaking: false,
-        avatar: '🎨', description: 'Critical Creative', voice: 'Kore',
-        identity: 'Deconstructs ideas from first principles and asks provocative questions.', session: null 
+        avatar: '🎨', description: 'The Abstract Thinker', voice: 'Kore',
+        identity: 'Visionary and deconstructive. Charlie connects the topic to art, life, and far-fetched analogies to find deep meaning.', session: null 
     }
   ]);
 
@@ -203,23 +204,27 @@ export const TeachSection: React.FC<TeachSectionProps> = ({ initialTopic = '' })
   if (!isSessionActive) {
       return (
           <div className="h-full flex flex-col items-center justify-center p-6 bg-white dark:bg-black overflow-y-auto">
-              <div className="max-w-4xl w-full space-y-12">
+              <div className="max-w-5xl w-full space-y-12">
                   <div className="text-center space-y-4">
                       <div className="w-16 h-16 bg-black dark:bg-white rounded-2xl mx-auto flex items-center justify-center">
                           <GraduationCap className="w-8 h-8 text-white dark:text-black" />
                       </div>
                       <h1 className="text-3xl font-black uppercase tracking-tighter text-black dark:text-white">Live Virtual Classroom</h1>
-                      <p className="text-gray-500 font-bold uppercase tracking-widest text-[10px]">Select your students</p>
+                      <p className="text-gray-500 font-bold uppercase tracking-widest text-[10px]">Select your students and learn who they are</p>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       {students.map(student => (
                           <div 
                             key={student.id}
                             onClick={() => setStudents(prev => prev.map(s => s.id === student.id ? { ...s, isEnabled: !s.isEnabled } : s))}
-                            className={`flex flex-col items-center p-6 rounded-[2rem] border transition-all cursor-pointer group ${student.isEnabled ? 'border-black dark:border-white bg-gray-50 dark:bg-gray-900 shadow-md' : 'opacity-20 grayscale'}`}
+                            className={`flex flex-col items-center p-8 rounded-[2.5rem] border-2 transition-all cursor-pointer group text-center ${student.isEnabled ? 'border-indigo-500 bg-indigo-50/30 dark:bg-indigo-900/10 shadow-lg' : 'opacity-30 grayscale border-gray-100 dark:border-gray-800'}`}
                           >
-                              <span className="text-4xl mb-3">{student.avatar}</span>
-                              <span className="font-black text-xs uppercase tracking-widest text-black dark:text-white">{student.name}</span>
+                              <span className="text-5xl mb-4 group-hover:scale-110 transition-transform">{student.avatar}</span>
+                              <span className="font-black text-sm uppercase tracking-widest text-black dark:text-white mb-1">{student.name}</span>
+                              <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-3">{student.description}</span>
+                              <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400 leading-relaxed">
+                                 {student.identity}
+                              </p>
                           </div>
                       ))}
                   </div>
@@ -228,10 +233,10 @@ export const TeachSection: React.FC<TeachSectionProps> = ({ initialTopic = '' })
                         type="text"
                         value={topic}
                         onChange={(e) => setTopic(e.target.value)}
-                        placeholder="What are you teaching?"
-                        className="w-full bg-gray-100 dark:bg-gray-950 rounded-full px-6 py-4 text-center text-lg font-black outline-none border-2 border-transparent focus:border-black dark:focus:border-white text-black dark:text-white"
+                        placeholder="What are you teaching today?"
+                        className="w-full bg-gray-100 dark:bg-gray-950 rounded-[2rem] px-8 py-5 text-center text-lg font-black outline-none border-4 border-transparent focus:border-black dark:focus:border-white text-black dark:text-white transition-all shadow-inner"
                       />
-                      <Button onClick={startSession} className="w-full py-4 text-sm bg-black dark:bg-white text-white dark:text-black rounded-full font-black uppercase tracking-widest shadow-xl">Start Class</Button>
+                      <Button onClick={startSession} className="w-full py-5 text-sm bg-black dark:bg-white text-white dark:text-black rounded-[2rem] font-black uppercase tracking-widest shadow-2xl hover:scale-105 active:scale-95 transition-all">Start Classroom Session</Button>
                   </div>
               </div>
           </div>
@@ -264,10 +269,20 @@ export const TeachSection: React.FC<TeachSectionProps> = ({ initialTopic = '' })
           <div className="py-2 bg-gray-50/50 dark:bg-[#050505] border-b border-gray-100 dark:border-gray-900 shrink-0 flex justify-center">
               <div className="flex gap-10">
                   {students.filter(s => s.isEnabled).map((student) => (
-                      <div key={student.id} onClick={() => callOnStudent(student.id)} className={`flex flex-col items-center relative transition-all duration-300 cursor-pointer ${student.isHandRaised ? '-translate-y-1' : ''}`}>
+                      <div 
+                        key={student.id} 
+                        onClick={() => callOnStudent(student.id)} 
+                        className={`flex flex-col items-center relative transition-all duration-300 cursor-pointer group ${student.isHandRaised ? '-translate-y-1' : ''}`}
+                      >
                           {student.isHandRaised && !student.isSpeaking && <div className="absolute -top-4 left-1/2 -translate-x-1/2 animate-bounce"><Hand className="w-3 h-3 text-black dark:text-white fill-current" /></div>}
                           <div className={`w-8 h-8 rounded-full flex items-center justify-center text-base transition-all border-2 ${student.isHandRaised ? 'border-black dark:border-white shadow-sm' : 'border-white dark:border-gray-800 bg-white dark:bg-gray-900'} ${student.isSpeaking ? 'scale-110 ring-2 ring-blue-500/10' : ''}`}>{student.avatar}</div>
                           <span className="mt-1 text-[6px] font-black uppercase tracking-widest opacity-60 text-black dark:text-white">{student.name}</span>
+                          
+                          {/* Student Tooltip on Hover */}
+                          <div className="absolute top-10 left-1/2 -translate-x-1/2 w-32 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 p-2 rounded-xl shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                             <p className="text-[7px] font-black uppercase tracking-widest text-indigo-500 mb-1">{student.description}</p>
+                             <p className="text-[6px] font-medium text-gray-500 leading-tight">{student.identity.substring(0, 40)}...</p>
+                          </div>
                       </div>
                   ))}
               </div>

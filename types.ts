@@ -1,3 +1,4 @@
+
 export enum AppTab {
   EXPLANATION = 'explanation',
   VISUALS = 'visuals',
@@ -6,6 +7,11 @@ export enum AppTab {
 }
 
 export type MainView = 'learning' | 'test' | 'teach' | 'metrics' | 'projects' | 'history' | 'settings' | 'paste-link';
+
+export type QuestionType = 'choose' | 'fill-blank' | 'match' | 'answer';
+export type StudentType = 'normal' | 'argumentative' | 'creative';
+export type VisualType = 'diagram' | 'flow' | 'compare' | 'analogy';
+export type LanguagePreference = 'en' | 'am' | 'both';
 
 export interface ChatMessage {
   id: string;
@@ -27,19 +33,15 @@ export interface GroundingSource {
   title: string;
 }
 
-export interface GroundingMetadata {
-  webSources: GroundingSource[];
-}
-
 export interface SourceItem {
   id: string;
   type: 'youtube' | 'pdf' | 'website' | 'image';
   title: string;
   url?: string;
-  metadata: string; // e.g. "youtube.com • 15 mins"
+  metadata: string;
   isSelected: boolean;
-  file?: File; // Store actual file if it's a local upload
-  content?: string; // Extracted text content for AI context
+  file?: File;
+  content?: string;
 }
 
 export interface MistakeItem {
@@ -48,7 +50,7 @@ export interface MistakeItem {
   questionText: string;
   userAnswer: string;
   correctAnswer: string;
-  category: string; // e.g. "Conceptual", "Calculation"
+  category: string;
   note: string;
   topic: string;
   timestamp: number;
@@ -57,48 +59,47 @@ export interface MistakeItem {
 export interface QuizResult {
   id: string;
   topic: string;
-  difficulty: string; // 'Easy' | 'Medium' | 'Hard'
+  difficulty: string;
   score: number;
   totalQuestions: number;
   timestamp: number;
 }
 
-// --- QUIZ TYPES ---
-
-export type QuestionType = 'choose' | 'fill-blank' | 'match' | 'answer';
-
-export interface QuestionBase {
-  id: string;
-  question: string;
-}
-
-export interface MultipleChoiceQuestion extends QuestionBase {
-  options: string[];
-  correctAnswer: string;
-}
-
-export interface FillBlankQuestion extends QuestionBase {
-  sentence: string; // Contains "___" for the blank
-  correctAnswer: string;
-}
-
-export interface MatchPair {
-  left: string;
-  right: string;
-}
-
-export interface MatchQuestion extends QuestionBase {
-  pairs: MatchPair[]; // usually 4-5 pairs per question set, or this represents one set
-}
-
-export interface ShortAnswerQuestion extends QuestionBase {
-  sampleAnswer: string; // Key points or ideal answer
+export interface ExplanationData {
+  topic: string;
+  intuition: {
+    problem: string;
+    hook: string;
+    localContext: string;
+    curiosityGap: string;
+  };
+  simpleIdea: string;
+  analogy: {
+    comparison: string;
+    explanation: string;
+  };
+  formal: {
+    definitions: { term: string; definition: string }[];
+    formulas?: { formula: string; explanation: string }[];
+    stepByStep: string[];
+  };
+  mistakes: {
+    wrong: string;
+    right: string;
+    reason: string;
+  }[];
+  activeRecall: {
+    question: string;
+    answer: string;
+    feedback: string;
+  };
+  summary: string[];
 }
 
 export interface QuizData {
   topic: string;
-  choose: MultipleChoiceQuestion[];
-  fillBlank: FillBlankQuestion[];
-  match: MatchQuestion[]; // For matching, we might just have one big set or multiple small sets. We'll do 5 sets.
-  answer: ShortAnswerQuestion[];
+  choose: any[];
+  fillBlank: any[];
+  match: any[];
+  answer: any[];
 }

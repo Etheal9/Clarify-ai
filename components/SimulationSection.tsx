@@ -1,74 +1,99 @@
-import React from 'react';
-import { Gamepad2, RotateCcw, MessageSquare } from 'lucide-react';
+
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { Gamepad2, RotateCcw, Send, Sparkles, Wand2 } from 'lucide-react';
 import { Button } from './Button';
 
 interface SimulationSectionProps {
   simulationCode: string | null;
   isLoading: boolean;
-  regenerate: () => void;
+  onUpdate: (prompt: string) => void;
 }
 
 export const SimulationSection: React.FC<SimulationSectionProps> = ({ 
   simulationCode, 
   isLoading,
-  regenerate
+  onUpdate
 }) => {
+  const [prompt, setPrompt] = useState('');
+
+  const handleSend = () => {
+    if (!prompt.trim() || isLoading) return;
+    onUpdate(prompt);
+    setPrompt('');
+  };
+
   if (isLoading) {
     return (
-      <div className="h-full flex flex-col items-center justify-center p-8 text-center text-gray-500 dark:text-gray-400 animate-pulse bg-white dark:bg-gray-800 transition-colors">
-        <Gamepad2 className="w-12 h-12 mb-4 text-indigo-500 animate-bounce" />
-        <h3 className="text-xl font-medium text-gray-700 dark:text-gray-200">Building Simulation...</h3>
-        <p className="max-w-md mt-2">
-          Gemini 3.0 Pro is writing code for an interactive visualization of your content.
-        </p>
-      </div>
-    );
-  }
-
-  if (!simulationCode) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center p-8 text-center text-gray-400 dark:text-gray-500">
-        <div className="p-4 bg-gray-100 dark:bg-gray-700 rounded-full mb-4 transition-colors">
-           <Gamepad2 className="w-8 h-8" />
+      <div className="h-full flex flex-col items-center justify-center p-12 text-center bg-white dark:bg-black">
+        <div className="relative mb-8">
+            <Gamepad2 className="w-16 h-16 text-indigo-500 animate-bounce" />
+            <motion.div 
+               animate={{ rotate: 360 }}
+               transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
+               className="absolute inset-0 border-2 border-dashed border-indigo-200 dark:border-indigo-900 rounded-full scale-150 opacity-20"
+            />
         </div>
-        <p>Analyze text to generate an interactive simulation.</p>
-        <Button onClick={regenerate} className="mt-4" variant="secondary">
-            Generate Simulation
-        </Button>
+        <h3 className="text-2xl font-black uppercase tracking-tighter text-black dark:text-white">Coding Logic...</h3>
+        <p className="max-w-xs mt-4 text-sm font-medium text-gray-500">Gemini is writing custom HTML/JS to bring your concept to life.</p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-white dark:bg-gray-800 transition-colors">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
+    <div className="flex flex-col h-full overflow-hidden bg-white dark:bg-black transition-colors">
+      {/* Header */}
+      <div className="h-14 px-6 border-b border-gray-100 dark:border-gray-900 flex items-center justify-between shrink-0 bg-gray-50/50 dark:bg-[#050505]">
           <div className="flex items-center gap-2">
-            <Gamepad2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-            <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">Interactive Simulation</span>
+            <Sparkles className="w-4 h-4 text-indigo-500" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-black dark:text-white">Interactive Sandbox</span>
           </div>
-          <Button 
-            variant="ghost" 
-            onClick={regenerate} 
-            className="text-xs h-8" 
-            icon={<RotateCcw className="w-3 h-3"/>}
-          >
-            Reset
-          </Button>
+          <Button variant="ghost" onClick={() => onUpdate("Restart simulation")} className="h-8 px-3 text-[10px] uppercase font-black" icon={<RotateCcw className="w-3 h-3"/>}>Reset</Button>
       </div>
+
+      {/* Simulation Frame */}
       <div className="flex-1 bg-white relative">
-        <iframe
-            srcDoc={simulationCode}
-            title="Generated Simulation"
-            className="w-full h-full border-0"
-            sandbox="allow-scripts allow-popups allow-forms"
-        />
-      </div>
-      <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 border-t border-indigo-100 dark:border-indigo-900/30 text-center transition-colors">
-          <div className="flex items-center justify-center gap-2 text-indigo-700 dark:text-indigo-300 text-sm font-medium">
-            <MessageSquare className="w-4 h-4" />
-            <span>Use the main chat to update this simulation</span>
+        {simulationCode ? (
+          <iframe
+              srcDoc={simulationCode}
+              title="Generated Simulation"
+              className="w-full h-full border-0"
+              sandbox="allow-scripts allow-popups allow-forms"
+          />
+        ) : (
+          <div className="h-full flex flex-col items-center justify-center p-12 text-center text-gray-400">
+             <div className="p-6 bg-gray-50 dark:bg-gray-900 rounded-[2rem] mb-6">
+                <Wand2 className="w-10 h-10" />
+             </div>
+             <p className="text-sm font-bold max-w-xs">Enter a concept below to generate an interactive simulation from scratch.</p>
           </div>
-          <p className="text-xs text-indigo-500 dark:text-indigo-400 mt-1">Example: "Make the animation faster", "Add a counter", "Change color to red"</p>
+        )}
+      </div>
+
+      {/* Simulation Command Bar */}
+      <div className="p-6 border-t border-gray-100 dark:border-gray-900 bg-white dark:bg-black shrink-0">
+          <div className="max-w-2xl mx-auto">
+              <div className="relative group">
+                  <input 
+                    type="text" 
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                    placeholder={simulationCode ? "Modify simulation (e.g. 'Make it faster')" : "Describe concept to simulate..."}
+                    className="w-full bg-gray-50 dark:bg-[#0c0c0c] border-2 border-gray-100 dark:border-gray-900 rounded-full py-4 pl-6 pr-14 text-sm font-bold outline-none focus:border-indigo-500 dark:focus:border-indigo-400 transition-all shadow-inner"
+                  />
+                  <button 
+                    onClick={handleSend}
+                    disabled={!prompt.trim()}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-black dark:bg-white text-white dark:text-black rounded-full flex items-center justify-center disabled:opacity-30 transition-all hover:scale-105"
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
+              </div>
+              <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mt-3 text-center">
+                 {simulationCode ? "Chat to modify logic, visuals, or behavior" : "Generates a complete interactive sandbox for learning"}
+              </p>
+          </div>
       </div>
     </div>
   );
